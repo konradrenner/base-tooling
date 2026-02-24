@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, username, ... }:
 
 {
   # ------------------------------------
@@ -37,9 +37,7 @@
   environment.shells = [ pkgs.zsh ];
 
   # Set default shell for user
-  users.users.konrad = {
-    shell = pkgs.zsh;
-  };
+  users.users.${username}.shell = pkgs.zsh;
 
   # ------------------------------------
   # macOS system defaults (sane baseline)

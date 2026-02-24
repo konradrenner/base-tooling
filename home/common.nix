@@ -1,13 +1,15 @@
-{ config, pkgs, ... }:
+{ config, pkgs, username, ... }:
 
+let
+  homeDir =
+    if pkgs.stdenv.isDarwin
+    then "/Users/${username}"
+    else "/home/${username}";
+in
 {
-  # Common Home Manager configuration for Linux + macOS
+  home.username = username;
+  home.homeDirectory = homeDir;
 
-  home.username = "konrad";
-  home.homeDirectory =
-    if pkgs.stdenv.isDarwin then "/Users/konrad" else "/home/konrad";
-
-  # Set once when adopting Home Manager; avoid changing later.
   home.stateVersion = "24.11";
 
   # -----------------

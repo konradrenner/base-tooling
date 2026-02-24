@@ -19,7 +19,10 @@
 
   outputs = inputs@{ self, nixpkgs, home-manager, nix-darwin, nix4vscode, ... }:
   let
-    # Import nixpkgs with the nix4vscode overlay and unfree enabled.
+    username =
+      let u = builtins.getEnv "BASE_TOOLING_USER";
+      in if u != "" then u else throw "BASE_TOOLING_USER is not set (run install.sh/update.sh with --user ...)";
+
     mkPkgs = system: import nixpkgs {
       inherit system;
       overlays = [ nix4vscode.overlays.default ];
@@ -27,38 +30,29 @@
     };
   in
   {
-    # ------------------------------
-    # Linux: home-manager standalone
-    # ------------------------------
-    # Usage:
-    #   nix run github:nix-community/home-manager -- switch --flake .#konrad@linux
-    homeConfigurations."konrad@linux" = home-manager.lib.homeManagerConfiguration {
+    homeConfigurations."${username}@linux" = home-manager.lib.homeManagerConfiguration {
       pkgs = mkPkgs "x86_64-linux";
+      extraSpecialArgs = { inherit username; };
       modules = [
         ./home/common.nix
         ./home/linux.nix
       ];
     };
 
-    # ------------------------------
-    # macOS (Apple Silicon): nix-darwin + home-manager
-    # ------------------------------
-    # Usage:
-    #   nix run github:nix-darwin/nix-darwin -- switch --flake .#default
     darwinConfigurations.default = nix-darwin.lib.darwinSystem {
       system = "aarch64-darwin";
       pkgs = mkPkgs "aarch64-darwin";
+      specialArgs = { inherit username; };
       modules = [
         ./darwin/configuration.nix
 
-        # Home Manager integrated into nix-darwin.
         home-manager.darwinModules.home-manager
         {
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
+          home-manager.extraSpecialArgs = { inherit username; };
 
-          # Wichtig: common + darwin als Module laden
-          home-manager.users.konrad = {
+          home-manager.users.${username} = {
             imports = [
               ./home/common.nix
               ./home/darwin.nix

@@ -31,7 +31,7 @@ Run **one command**:
 
 [source,bash]
 ----
-curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/install.sh | bash -s -- --user ABC
 ----
 
 This will:

@@ -7,9 +7,53 @@ trap 'echo "ERROR: Script failed at line $LINENO."' ERR
 # --------- config ----------
 REPO_URL="https://github.com/konradrenner/base-tooling.git"
 INSTALL_DIR="${HOME}/.base-tooling"
-LINUX_HM_TARGET="konrad@linux"
+LINUX_HM_TARGET="${USERNAME}@linux"
 DARWIN_TARGET="default"
 # ---------------------------
+
+# ----- args -----
+USERNAME=""
+
+usage() {
+  cat <<'USAGE'
+Usage: install.sh --user <username>
+
+Required:
+  --user <username>   macOS/Linux account name (e.g. koni)
+
+Examples:
+  ./install.sh --user koni
+  curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/install.sh | bash -s -- --user koni
+USAGE
+}
+
+parse_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --user)
+        shift
+        USERNAME="${1:-}"
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "Unknown option: $1"
+        usage
+        exit 2
+        ;;
+    esac
+  done
+
+  if [ -z "${USERNAME}" ]; then
+    echo "ERROR: --user is required."
+    usage
+    exit 2
+  fi
+}
+# ---------------
 
 is_linux()  { [ "$(uname -s)" = "Linux" ]; }
 is_darwin() { [ "$(uname -s)" = "Darwin" ]; }
@@ -157,20 +201,43 @@ clone_or_update_repo() {
   fi
 }
 
+export BASE_TOOLING_USER="${USERNAME}"
+
 apply_configuration() {
   msg "Applying declarative configuration..."
+  msg "Using BASE_TOOLING_USER=${USERNAME}"
+
+  export BASE_TOOLING_USER="${USERNAME}"
+
   if is_darwin; then
     require_sudo
-    # This expects: darwinConfigurations.default in flake.nix
-    nix build "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
-    sudo ./result/sw/bin/darwin-rebuild switch --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+
+    # Build system configuration (user context, impure for env var)
+    nix build \
+      --impure \
+      "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
+
+    # Activate as root
+    sudo ./result/sw/bin/darwin-rebuild switch \
+      --impure \
+      --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+
   else
-    # This expects: homeConfigurations."konrad@linux" in flake.nix
-    nix run github:nix-community/home-manager -- switch --flake "${INSTALL_DIR}#${LINUX_HM_TARGET}"
+    # Linux Home Manager target: "<user>@linux"
+    nix run github:nix-community/home-manager -- \
+      switch \
+      --impure \
+      --flake "${INSTALL_DIR}#${USERNAME}@linux"
   fi
 }
 
 main() {
+
+  parse_args "$@"
+  msg "Base tooling install (Day-0) starting..."
+  msg "Detected OS: $(uname -s) ($(uname -m))"
+  msg "Using user: ${USERNAME}"
+
   msg "Base tooling install (Day-0) starting..."
   msg "Detected OS: $(uname -s) ($(uname -m))"
 
