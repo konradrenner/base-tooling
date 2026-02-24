@@ -1,6 +1,7 @@
-{ config, pkgs, ... }:
+{ config, pkgs, username, ... }:
 
 {
+  imports = [ ./common.nix ];
   # Linux-specific Home Manager configuration
 
   programs.bash = {
