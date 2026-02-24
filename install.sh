@@ -1,31 +1,59 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-# Fail with readable message
-trap 'echo "ERROR: Script failed at line $LINENO."' ERR
+trap 'echo "ERROR: install.sh failed at line $LINENO." >&2' ERR
 
 # --------- config ----------
 REPO_URL="https://github.com/konradrenner/base-tooling.git"
-INSTALL_DIR="${HOME}/.base-tooling"
-LINUX_HM_TARGET="${USERNAME}@linux"
+DEFAULT_INSTALL_DIR="${HOME}/.base-tooling"
 DARWIN_TARGET="default"
 # ---------------------------
 
-# ----- args -----
-USERNAME=""
+is_linux()  { [ "$(uname -s)" = "Linux" ]; }
+is_darwin() { [ "$(uname -s)" = "Darwin" ]; }
+
+msg() { printf "\n==> %s\n" "$*"; }
+
+require_cmd() {
+  local c="$1"
+  if ! command -v "$c" >/dev/null 2>&1; then
+    echo "ERROR: required command not found: $c" >&2
+    exit 1
+  fi
+}
+
+require_sudo() {
+  require_cmd sudo
+  if ! sudo -n true 2>/dev/null; then
+    echo "Sudo privileges required. You may be prompted for your password."
+    sudo true
+  fi
+}
 
 usage() {
   cat <<'USAGE'
-Usage: install.sh --user <username>
+Usage:
+  install.sh --user <username> [--dir <path>] [--no-clone]
 
 Required:
-  --user <username>   macOS/Linux account name (e.g. koni)
+  --user <username>   Local account name (e.g. koni)
+
+Optional:
+  --dir <path>        Install/checkout directory (default: ~/.base-tooling)
+  --no-clone          Do not clone/fetch; use current directory as repo
+                      (useful for local development)
 
 Examples:
   ./install.sh --user koni
+  ./install.sh --user koni --dir ~/.base-tooling
+
+  # Day-0 from a completely new machine (no git clone required):
   curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/install.sh | bash -s -- --user koni
 USAGE
 }
+
+USERNAME=""
+INSTALL_DIR="${DEFAULT_INSTALL_DIR}"
+NO_CLONE=0
 
 parse_args() {
   while [ $# -gt 0 ]; do
@@ -35,12 +63,21 @@ parse_args() {
         USERNAME="${1:-}"
         shift
         ;;
+      --dir)
+        shift
+        INSTALL_DIR="${1:-}"
+        shift
+        ;;
+      --no-clone)
+        NO_CLONE=1
+        shift
+        ;;
       -h|--help)
         usage
         exit 0
         ;;
       *)
-        echo "Unknown option: $1"
+        echo "Unknown option: $1" >&2
         usage
         exit 2
         ;;
@@ -48,27 +85,9 @@ parse_args() {
   done
 
   if [ -z "${USERNAME}" ]; then
-    echo "ERROR: --user is required."
+    echo "ERROR: --user is required." >&2
     usage
     exit 2
-  fi
-}
-# ---------------
-
-is_linux()  { [ "$(uname -s)" = "Linux" ]; }
-is_darwin() { [ "$(uname -s)" = "Darwin" ]; }
-
-msg() { printf "\n==> %s\n" "$*"; }
-
-require_sudo() {
-  if ! command -v sudo >/dev/null 2>&1; then
-    echo "ERROR: sudo is required but not installed."
-    exit 1
-  fi
-
-  if ! sudo -n true 2>/dev/null; then
-    echo "Sudo privileges required. You may be prompted for your password."
-    sudo true
   fi
 }
 
@@ -79,6 +98,7 @@ ensure_nix() {
   fi
 
   msg "Installing Nix (Determinate Systems installer)..."
+  require_cmd curl
   curl -fsSL https://install.determinate.systems/nix | sh -s -- install
 
   # best-effort load for current shell
@@ -86,6 +106,8 @@ ensure_nix() {
     # shellcheck disable=SC1091
     . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
   fi
+
+  require_cmd nix
 }
 
 enable_flakes() {
@@ -101,7 +123,6 @@ EOF
   if ! grep -q "experimental-features" ~/.config/nix/nix.conf; then
     echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
   elif ! grep -q "flakes" ~/.config/nix/nix.conf; then
-    # If experimental-features exists but flakes missing, append a safe line.
     echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
   fi
 }
@@ -116,13 +137,15 @@ ensure_homebrew_darwin() {
   fi
 
   msg "Homebrew not found. Installing Homebrew (required for Rancher Desktop cask on macOS)..."
-  # Official Homebrew installer (interactive prompts may appear)
+  require_cmd curl
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
   # Ensure brew is in PATH for this script run (Apple Silicon default location)
   if [ -x /opt/homebrew/bin/brew ]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
   fi
+
+  require_cmd brew
 }
 
 install_rancher_desktop_linux() {
@@ -145,6 +168,7 @@ install_rancher_desktop_linux() {
   fi
 
   require_sudo
+  require_cmd curl
 
   local arch
   arch="$(uname -m)"
@@ -153,7 +177,6 @@ install_rancher_desktop_linux() {
     aarch64|arm64) arch="aarch64" ;;
   esac
 
-  # Get latest release tag + matching asset via GitHub API
   local tag asset_url
   tag="$(curl -fsSL https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest \
     | grep -m1 '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')"
@@ -185,15 +208,49 @@ install_rancher_desktop_linux() {
     fi
   fi
 
-  msg "Rancher Desktop installed. Start it once and select 'dockerd (moby)' as engine for Dev Containers."
+  msg "Rancher Desktop installed. Start it once and select 'dockerd (moby)' for VS Code Dev Containers."
+}
+
+ensure_git() {
+  if command -v git >/dev/null 2>&1; then
+    msg "git already installed."
+    return 0
+  fi
+
+  if is_darwin; then
+    msg "git not found. Installing Xcode Command Line Tools (interactive prompt may appear)..."
+    xcode-select --install || true
+    echo "After CLT install finishes, re-run this install command." >&2
+    exit 1
+  fi
+
+  msg "git not found. Installing via package manager..."
+  require_sudo
+
+  if command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update && sudo apt-get install -y git
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo dnf install -y git
+  elif command -v pacman >/dev/null 2>&1; then
+    sudo pacman -S --noconfirm git
+  else
+    echo "ERROR: cannot install git automatically on this Linux." >&2
+    echo "Install git manually and re-run." >&2
+    exit 1
+  fi
 }
 
 clone_or_update_repo() {
+  if [ "$NO_CLONE" -eq 1 ]; then
+    msg "--no-clone set: using current directory as repo"
+    INSTALL_DIR="$(pwd)"
+    return 0
+  fi
+
   msg "Ensuring repo is present at: ${INSTALL_DIR}"
   if [ -d "${INSTALL_DIR}/.git" ]; then
     msg "Repo already cloned. Fetching latest..."
     git -C "${INSTALL_DIR}" fetch --all --prune
-    # Don't force merge here; day-2 update.sh does pull explicitly.
   else
     msg "Cloning ${REPO_URL} ..."
     mkdir -p "$(dirname "${INSTALL_DIR}")"
@@ -201,29 +258,20 @@ clone_or_update_repo() {
   fi
 }
 
-export BASE_TOOLING_USER="${USERNAME}"
-
 apply_configuration() {
   msg "Applying declarative configuration..."
-  msg "Using BASE_TOOLING_USER=${USERNAME}"
-
   export BASE_TOOLING_USER="${USERNAME}"
 
   if is_darwin; then
     require_sudo
 
-    # Build system configuration (user context, impure for env var)
-    nix build \
-      --impure \
-      "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
+    # Build system configuration (user context). --impure needed for BASE_TOOLING_USER via getEnv.
+    nix build --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
 
     # Activate as root
-    sudo ./result/sw/bin/darwin-rebuild switch \
-      --impure \
-      --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
-
+    sudo ./result/sw/bin/darwin-rebuild switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
   else
-    # Linux Home Manager target: "<user>@linux"
+    # Linux Home Manager configuration for "<user>@linux"
     nix run github:nix-community/home-manager -- \
       switch \
       --impure \
@@ -232,62 +280,33 @@ apply_configuration() {
 }
 
 main() {
-
   parse_args "$@"
+
   msg "Base tooling install (Day-0) starting..."
   msg "Detected OS: $(uname -s) ($(uname -m))"
   msg "Using user: ${USERNAME}"
+  msg "Repo dir: ${INSTALL_DIR}"
 
-  msg "Base tooling install (Day-0) starting..."
-  msg "Detected OS: $(uname -s) ($(uname -m))"
-
-  # curl and git are typically present; if git isn't, this setup can't proceed cleanly.
-  if ! command -v curl >/dev/null 2>&1; then
-    echo "ERROR: curl is required but not found."
-    echo "Please install curl via system package manager and re-run."
-    exit 1
-  fi
+  require_cmd curl
 
   ensure_nix
   enable_flakes
+
+  # macOS: Rancher Desktop installed declaratively via nix-darwin Homebrew cask (brew must exist)
   ensure_homebrew_darwin
 
-  # macOS: Rancher Desktop is installed declaratively via nix-darwin Homebrew (in your darwin module)
+  # Linux: install Rancher Desktop via upstream package (optional but default)
   install_rancher_desktop_linux
 
-  # We need git to clone; on macOS this may trigger Xcode CLT prompt if missing
-  if ! command -v git >/dev/null 2>&1; then
-    if is_darwin; then
-      msg "git not found. Installing Xcode Command Line Tools (interactive prompt may appear)..."
-      xcode-select --install || true
-      msg "After CLT install finishes, re-run this install command."
-      exit 1
-    else
-      msg "git not found. Installing via package manager..."
-      require_sudo
-      if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update && sudo apt-get install -y git
-      elif command -v dnf >/dev/null 2>&1; then
-        sudo dnf install -y git
-      elif command -v pacman >/dev/null 2>&1; then
-        sudo pacman -S --noconfirm git
-      else
-        echo "ERROR: cannot install git automatically on this Linux."
-        echo "Install git manually and re-run."
-        exit 1
-      fi
-    fi
-  fi
-
+  ensure_git
   clone_or_update_repo
   apply_configuration
 
   msg "Done."
   echo "Next:"
   echo " - Open a new terminal."
-  echo " - On macOS, the first nix-darwin switch may ask for sudo."
-  echo " - Start Rancher Desktop (Linux/macOS). In settings choose 'dockerd (moby)' for VS Code Dev Containers."
-  echo " - Day-2 updates: ${INSTALL_DIR}/update.sh"
+  echo " - Start Rancher Desktop. Choose 'dockerd (moby)' for VS Code Dev Containers."
+  echo " - Day-2 updates: ${INSTALL_DIR}/update.sh --user ${USERNAME}"
 }
 
 main "$@"

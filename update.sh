@@ -1,25 +1,92 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'echo "ERROR: update.sh failed at line $LINENO." >&2' ERR
 
 INSTALL_DIR="${HOME}/.base-tooling"
-LINUX_HM_TARGET="konrad@linux"
 DARWIN_TARGET="default"
 
 is_linux()  { [ "$(uname -s)" = "Linux" ]; }
 is_darwin() { [ "$(uname -s)" = "Darwin" ]; }
 
-
 msg() { printf "\n==> %s\n" "$*"; }
 
-UPDATE_RANCHER=0
+require_cmd() {
+  local c="$1"
+  if ! command -v "$c" >/dev/null 2>&1; then
+    echo "ERROR: required command not found: $c" >&2
+    exit 1
+  fi
+}
+
+require_sudo() {
+  require_cmd sudo
+  if ! sudo -n true 2>/dev/null; then
+    echo "Sudo privileges required. You may be prompted for your password."
+    sudo true
+  fi
+}
 
 usage() {
   cat <<'USAGE'
-Usage: update.sh [--update-rancher] [--no-pull]
+Usage:
+  update.sh --user <username> [--update-rancher] [--no-pull] [--dir <path>]
 
-  --update-rancher   Update Rancher Desktop on Linux (downloads latest .deb/.rpm).
-  --no-pull          Do not run git pull (useful if you are on a local branch).
+Required:
+  --user <username>     Local account name (e.g. koni)
+
+Optional:
+  --update-rancher      (Linux) Update Rancher Desktop to latest release (.deb/.rpm)
+  --no-pull             Do not run git pull (useful if you are on a local branch)
+  --dir <path>          Repo directory (default: ~/.base-tooling)
+
+Examples:
+  ~/.base-tooling/update.sh --user koni
+  ~/.base-tooling/update.sh --user koni --update-rancher
 USAGE
+}
+
+USERNAME=""
+UPDATE_RANCHER=0
+NO_PULL=0
+
+parse_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --user)
+        shift
+        USERNAME="${1:-}"
+        shift
+        ;;
+      --update-rancher)
+        UPDATE_RANCHER=1
+        shift
+        ;;
+      --no-pull)
+        NO_PULL=1
+        shift
+        ;;
+      --dir)
+        shift
+        INSTALL_DIR="${1:-}"
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "Unknown option: $1" >&2
+        usage
+        exit 2
+        ;;
+    esac
+  done
+
+  if [ -z "${USERNAME}" ]; then
+    echo "ERROR: --user is required." >&2
+    usage
+    exit 2
+  fi
 }
 
 update_rancher_desktop_linux() {
@@ -40,6 +107,9 @@ update_rancher_desktop_linux() {
     return 0
   fi
 
+  require_sudo
+  require_cmd curl
+
   local arch
   arch="$(uname -m)"
   case "$arch" in
@@ -53,7 +123,7 @@ update_rancher_desktop_linux() {
     | grep -m1 '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')"
 
   asset_url="$(curl -fsSL "https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/tags/${tag}" \
-    | grep -Eo 'https://[^\"]+\.(deb|rpm)' \
+    | grep -Eo 'https://[^"]+\.(deb|rpm)' \
     | grep -E "${pkgtype}$" \
     | grep -E "${arch}" \
     | head -n1)"
@@ -81,28 +151,43 @@ update_rancher_desktop_linux() {
   fi
 }
 
+apply_configuration() {
+  msg "Applying declarative configuration..."
+  export BASE_TOOLING_USER="${USERNAME}"
+
+  if is_darwin; then
+    require_sudo
+    nix build --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
+    sudo ./result/sw/bin/darwin-rebuild switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+  else
+    nix run github:nix-community/home-manager -- \
+      switch \
+      --impure \
+      --flake "${INSTALL_DIR}#${USERNAME}@linux"
+  fi
+}
+
 main() {
-  local no_pull=0
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --update-rancher) UPDATE_RANCHER=1; shift ;;
-      --no-pull) no_pull=1; shift ;;
-      -h|--help) usage; exit 0 ;;
-      *) echo "Unknown option: $1"; usage; exit 2 ;;
-    esac
-  done
+  parse_args "$@"
+
+  msg "Base tooling update (Day-2) starting..."
+  msg "Detected OS: $(uname -s) ($(uname -m))"
+  msg "Using user: ${USERNAME}"
+  msg "Repo dir: ${INSTALL_DIR}"
 
   if [ ! -d "${INSTALL_DIR}/.git" ]; then
-    echo "ERROR: Repo not found at ${INSTALL_DIR}."
-    echo "Run the Day-0 installer first."
+    echo "ERROR: Repo not found at ${INSTALL_DIR}." >&2
+    echo "Run install.sh first (Day-0)." >&2
     exit 1
   fi
 
-  if [ "$no_pull" -eq 0 ]; then
+  require_cmd git
+
+  if [ "$NO_PULL" -eq 0 ]; then
     msg "Updating repo..."
     if [ -n "$(git -C "${INSTALL_DIR}" status --porcelain)" ]; then
-      echo "ERROR: Working tree has uncommitted changes in ${INSTALL_DIR}."
-      echo "Please commit/stash them, or re-run with --no-pull."
+      echo "ERROR: Working tree has uncommitted changes in ${INSTALL_DIR}." >&2
+      echo "Commit/stash them, or re-run with --no-pull." >&2
       exit 1
     fi
     git -C "${INSTALL_DIR}" pull --rebase
@@ -114,13 +199,7 @@ main() {
     update_rancher_desktop_linux
   fi
 
-  msg "Applying configuration..."
-  if is_darwin; then
-    nix build "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
-    sudo ./result/sw/bin/darwin-rebuild switch --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
-  else
-    nix run github:nix-community/home-manager -- switch --flake "${INSTALL_DIR}#${LINUX_HM_TARGET}"
-  fi
+  apply_configuration
 
   msg "Done."
 }
