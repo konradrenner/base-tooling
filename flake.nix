@@ -69,10 +69,10 @@
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
 
-          # Pass username into home-manager modules (e.g. home/common.nix)
+          # username muss in common.nix ankommen
           home-manager.extraSpecialArgs = { inherit username; };
 
-          # IMPORTANT: bind HM user dynamically and import common + darwin
+          # NUR EINE Definition für den User, und die importiert common + darwin
           home-manager.users.${username} = {
             imports = [
               ./home/common.nix

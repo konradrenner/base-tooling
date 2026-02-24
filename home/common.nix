@@ -4,8 +4,8 @@ let
   # Must be an absolute *path* (not just a string) to satisfy HM type checks.
   homeDir =
     if pkgs.stdenv.isDarwin
-    then /. + "/Users/${username}"
-    else /. + "/home/${username}";
+    then "/Users/${username}"
+    else "/home/${username}";
 in
 {
   home.username = username;
@@ -53,8 +53,5 @@ in
 
     # Java
     graalvmPackages.graalvm-ce
-
-    # Optional
-    podman-desktop
   ];
 }
