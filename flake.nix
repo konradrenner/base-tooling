@@ -73,7 +73,17 @@
           home-manager.extraSpecialArgs = { inherit username; };
 
           # NUR EINE Definition für den User, und die importiert common + darwin
-          home-manager.users.${username} = import ./home/darwin.nix;
+          home-manager.users.${username} = {
+            imports = [
+              ./home/common.nix
+              ./home/darwin.nix
+            ];
+
+            # bombensicher: HM bekommt hier sicher einen absoluten Pfad
+            home.username = username;
+            home.homeDirectory = "/Users/${username}";
+            home.stateVersion = "24.11";
+          };
         }
       ];
     };

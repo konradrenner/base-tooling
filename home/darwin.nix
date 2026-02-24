@@ -1,8 +1,6 @@
 { config, pkgs, username, ... }:
 
 {
-  imports = [ ./common.nix ];
-
   programs.zsh = {
     enable = true;
     enableCompletion = true;
