@@ -1,0 +1,79 @@
+= base-tooling
+
+Declarative + versioned base developer workstation setup for *macOS (Apple Silicon)* and *Linux*, compatible with +direnv+ + +devenv+ workflows.
+
+== What this installs/configures
+
+Global base tooling (declarative):
+* Nix + flakes enabled
+* Home Manager (Linux standalone)
+* nix-darwin + Home Manager (macOS)
+* direnv (+ nix-direnv)
+* git
+* VS Code + extensions:
+** Dev Containers
+** AsciiDoc
+** PlantUML
+** Eclipse keymap
+** IntelliJ Code Formatter
+* NetBeans
+* devenv CLI
+* graphviz, plantuml, fontconfig, curl
+* GraalVM CE
+
+Container engine: *Rancher Desktop* (recommended for Dev Containers)
+* macOS: installed via nix-darwin Homebrew cask
+* Linux: installed from upstream .deb/.rpm release
+
+== Day-0: First installation (empty machine)
+
+Run **one command**:
+
+[source,bash]
+----
+curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/install.sh | bash
+----
+
+This will:
+. Install Nix using the Determinate Systems installer (if missing)
+. Enable flakes
+. Install Rancher Desktop on Linux (if missing)
+. Clone this repo into ~/.base-tooling
+. Apply configuration using:
+.. macOS: +darwinConfigurations.default+
+.. Linux: +homeConfigurations.konrad@linux+
+
+After installation
+. Open a new terminal.
+. Start Rancher Desktop once.
+. In Rancher Desktop settings select container engine +dockerd (moby)+ for best VS Code Dev Containers compatibility.
+. Use +direnv+ + +devenv+ in your projects as usual.
+
+== Day-2: Updates / changes to the base setup
+
+Go to the local checkout and run the update script:
+
+[source,bash]
+----
+~/.base-tooling/update.sh
+----
+
+This will:
+. +git pull --rebase+
+. re-apply the configuration (+switch+)
+
+Make changes
+. Edit files in ~/.base-tooling
+. Commit + push
+. On a machine you want to update: run ~/.base-tooling/update.sh
+
+== Troubleshooting
+
+=== macOS: git not found
+
+If git isn’t available on a fresh macOS install, +install.sh+ triggers +xcode-select --install+.
+After the install finishes, re-run the Day-0 command.
+
+=== Linux: Rancher Desktop install
+
+Linux installation uses upstream release packages (.deb/.rpm). If the distro doesn’t use +apt+/+rpm+, install Rancher Desktop manually and re-run +install.sh+.
