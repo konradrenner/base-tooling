@@ -3,8 +3,8 @@
 let
   homeDir =
     if pkgs.stdenv.isDarwin
-    then "/Users/${username}"
-    else "/home/${username}";
+    then /. + "/Users/${username}"
+    else /. + "/home/${username}";
 in
 {
   home.username = username;

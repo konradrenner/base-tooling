@@ -55,7 +55,7 @@ Go to the local checkout and run the update script (default path is a hidden dir
 
 [source,bash]
 ----
-~/.base-tooling/update.sh
+~/.base-tooling/update.sh --user ABC
 ----
 
 This will:

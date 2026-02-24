@@ -53,10 +53,7 @@
           home-manager.extraSpecialArgs = { inherit username; };
 
           home-manager.users.${username} = {
-            imports = [
-              ./home/common.nix
-              ./home/darwin.nix
-            ];
+            imports = [ ./home/common.nix ./home/darwin.nix ];
           };
         }
       ];
