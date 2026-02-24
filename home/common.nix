@@ -1,6 +1,7 @@
 { config, pkgs, username, ... }:
 
 let
+  # Must be an absolute *path* (not just a string) to satisfy HM type checks.
   homeDir =
     if pkgs.stdenv.isDarwin
     then /. + "/Users/${username}"
@@ -10,44 +11,31 @@ in
   home.username = username;
   home.homeDirectory = homeDir;
 
+  # Set once when adopting Home Manager; don't change later.
   home.stateVersion = "24.11";
 
-  # -----------------
-  # Base CLI tooling
-  # -----------------
   programs.git.enable = true;
 
-  # direnv is also enabled in per-OS modules to ensure shell hooks, but keeping it
-  # here makes it available on both platforms.
   programs.direnv = {
     enable = true;
     nix-direnv.enable = true;
   };
 
-  # VS Code (editor) + extensions (installed declaratively via nix4vscode overlay)
   programs.vscode = {
     enable = true;
 
-    # VS Code Marketplace extensions (IDs)
+    # VS Code Marketplace extensions (via nix4vscode overlay)
     extensions = pkgs.nix4vscode.forVscode [
-      # Dev Containers
       "ms-vscode-remote.remote-containers"
-
-      # Docs/Diagrams
       "asciidoctor.asciidoctor-vscode"
       "jebbs.plantuml"
-
-      # Keymaps / formatting
       "alphabotsec.vscode-eclipse-keybindings"
       "OleksandrHavrysh.intellij-formatter"
     ];
   };
 
-  # -----------------
-  # Packages
-  # -----------------
   home.packages = with pkgs; [
-    # IDEs
+    # IDEs / Editor
     vscode
     netbeans
 
@@ -58,7 +46,7 @@ in
     # Dev env tooling
     devenv
 
-    # Diagram + rendering helpers
+    # Diagramming
     graphviz
     plantuml
     fontconfig
@@ -66,7 +54,7 @@ in
     # Java
     graalvmPackages.graalvm-ce
 
-    # Optional: keep installed even if Rancher Desktop is the primary engine
+    # Optional
     podman-desktop
   ];
 }
