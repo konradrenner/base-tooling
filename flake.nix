@@ -1,7 +1,7 @@
 
 
 {
-  description = "base-tooling: Konrad's declarative workstation base (Linux + macOS)";
+  description = "base-tooling: Declarative base-tooling (Linux + macOS)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -56,7 +56,14 @@
         {
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
-          home-manager.users.konrad = import ./home/darwin.nix;
+
+          # Wichtig: common + darwin als Module laden
+          home-manager.users.konrad = {
+            imports = [
+              ./home/common.nix
+              ./home/darwin.nix
+            ];
+          };
         }
       ];
     };
