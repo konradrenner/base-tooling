@@ -51,7 +51,7 @@ After installation
 
 == Day-2: Updates / changes to the base setup
 
-Go to the local checkout and run the update script:
+Go to the local checkout and run the update script (default path is a hidden directory in home):
 
 [source,bash]
 ----
