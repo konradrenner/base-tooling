@@ -93,6 +93,61 @@ apply_configuration() {
   fi
 }
 
+ensure_linux_bash_environment() {
+  if ! is_linux; then
+    return 0
+  fi
+
+  local HOME_DIR
+  HOME_DIR="$(getent passwd "$USERNAME" | cut -d: -f6)"
+
+  if [ -z "$HOME_DIR" ] || [ ! -d "$HOME_DIR" ]; then
+    echo "ERROR: Cannot determine home directory for user $USERNAME" >&2
+    exit 1
+  fi
+
+  local BASHRC="$HOME_DIR/.bashrc"
+  local SNIPPET_DIR="$HOME_DIR/.bashrc.d"
+  local SNIPPET="$SNIPPET_DIR/base-tooling.sh"
+
+  mkdir -p "$SNIPPET_DIR"
+
+  cat >"$SNIPPET" <<'EOF'
+# ---- base-tooling managed block ----
+
+# Load Nix environment
+if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+  . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+elif [ -e "$HOME/.nix-profile/etc/profile.d/nix.sh" ]; then
+  . "$HOME/.nix-profile/etc/profile.d/nix.sh"
+fi
+
+# direnv hook (only if installed)
+if command -v direnv >/dev/null 2>&1; then
+  eval "$(direnv hook bash)"
+fi
+
+# ---- /base-tooling ----
+EOF
+
+  chown "$USERNAME":"$USERNAME" "$SNIPPET"
+
+  # ensure bashrc exists
+  if [ ! -f "$BASHRC" ]; then
+    touch "$BASHRC"
+    chown "$USERNAME":"$USERNAME" "$BASHRC"
+  fi
+
+  if ! grep -q "base-tooling managed block loader" "$BASHRC" 2>/dev/null; then
+    cat >>"$BASHRC" <<'EOF'
+
+# base-tooling managed block loader
+[ -r "$HOME/.bashrc.d/base-tooling.sh" ] && . "$HOME/.bashrc.d/base-tooling.sh"
+EOF
+  fi
+}
+
 update_repo
+ensure_linux_bash_environment
 apply_configuration
 msg "Done."
