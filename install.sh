@@ -207,7 +207,7 @@ apply_configuration() {
 
     # Linux Home Manager configuration for "<user>@linux"
     nix run github:nix-community/home-manager -- \
-      switch \
+      switch -b backup \
       --impure \
       --flake "${INSTALL_DIR}#${USERNAME}@linux"
   fi

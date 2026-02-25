@@ -87,7 +87,7 @@ apply_configuration() {
     sudo --preserve-env=BASE_TOOLING_USER "${INSTALL_DIR}/result/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#default"
   else
     nix run github:nix-community/home-manager -- \
-      switch \
+      switch -b backup \
       --impure \
       --flake "${INSTALL_DIR}#${USERNAME}@linux"
   fi
