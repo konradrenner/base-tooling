@@ -3,5 +3,6 @@
 {
   xdg.enable = true;
 
-  programs.bash.enable = true;
+  # i am ok with the defautls of bash on linux
+  #programs.bash.enable = true;
 }
