@@ -48,4 +48,6 @@
 
   # nix-darwin state tracking
   system.stateVersion = 4;
+
+  ids.gids.nixbld = 350;
 }
