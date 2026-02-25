@@ -36,7 +36,7 @@
   {
     # ------------------------------
     # Linux: home-manager standalone
-    # ------------------------------
+#     # ------------------------------
     # Usage:
     #   BASE_TOOLING_USER=... nix run github:nix-community/home-manager -- switch --impure --flake .#<user>@linux
     homeConfigurations."${username}@linux" = home-manager.lib.homeManagerConfiguration {
@@ -69,6 +69,8 @@
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
           home-manager.extraSpecialArgs = { inherit username; };
+
+          home-manager.backupFileExtension = "before-base-tooling";
 
           home-manager.users.${username} = {
             imports = [
