@@ -1,155 +1,98 @@
 #!/usr/bin/env bash
 set -euo pipefail
-trap 'echo "ERROR: update.sh failed at line $LINENO." >&2' ERR
 
-INSTALL_DIR="${HOME}/.base-tooling"
-DARWIN_TARGET="default"
+msg() { echo -e "\n==> $*"; }
+warn() { echo -e "WARN: $*" >&2; }
+die() { echo -e "ERROR: $*" >&2; exit 1; }
 
-is_linux()  { [ "$(uname -s)" = "Linux" ]; }
-is_darwin() { [ "$(uname -s)" = "Darwin" ]; }
+have() { command -v "$1" >/dev/null 2>&1; }
+is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
+is_linux()  { [[ "$(uname -s)" == "Linux"  ]]; }
 
-msg() { printf "\n==> %s\n" "$*"; }
-
-require_cmd() {
-  local c="$1"
-  if ! command -v "$c" >/dev/null 2>&1; then
-    echo "ERROR: required command not found: $c" >&2
-    exit 1
-  fi
-}
-
-require_sudo() {
-  require_cmd sudo
-  if ! sudo -n true 2>/dev/null; then
-    echo "Sudo privileges required. You may be prompted for your password."
-    sudo true
-  fi
-}
+require_sudo() { msg "Sudo privileges required. You may be prompted for your password."; sudo -v; }
 
 usage() {
-  cat <<'USAGE'
+  cat <<'EOF'
 Usage:
-  update.sh --user <username> [--no-pull] [--dir <path>]
+  update.sh --user <name> [--dir <path>] [--no-pull]
 
-Required:
-  --user <username>     Local account name (e.g. koni)
-
-Optional:
-  --no-pull             Do not run git pull (useful if you are on a local branch)
-  --dir <path>          Repo directory (default: ~/.base-tooling)
-
-Notes:
-  - This script does NOT run 'nix flake update'. It only pulls the repo.
-  - Lockfile updates are intended to be done manually by the platform team.
-USAGE
+EOF
 }
 
 USERNAME=""
-NO_PULL=0
+INSTALL_DIR=""
+NO_PULL="false"
 
-parse_args() {
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --user) shift; USERNAME="${1:-}"; shift ;;
-      --no-pull) NO_PULL=1; shift ;;
-      --dir) shift; INSTALL_DIR="${1:-}"; shift ;;
-      -h|--help) usage; exit 0 ;;
-      *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
-    esac
-  done
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --user) USERNAME="${2:-}"; shift 2 ;;
+    --dir) INSTALL_DIR="${2:-}"; shift 2 ;;
+    --no-pull) NO_PULL="true"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "Unknown argument: $1" ;;
+  esac
+done
 
-  if [ -z "${USERNAME}" ]; then
-    echo "ERROR: --user is required." >&2
-    usage
-    exit 2
+[[ -n "$USERNAME" ]] || { usage; die "--user is required"; }
+
+if [[ -z "$INSTALL_DIR" ]]; then
+  if is_darwin; then
+    INSTALL_DIR="/Users/${USERNAME}/.base-tooling"
+  else
+    if have getent && getent passwd "$USERNAME" >/dev/null 2>&1; then
+      INSTALL_DIR="$(getent passwd "$USERNAME" | cut -d: -f6)/.base-tooling"
+    else
+      INSTALL_DIR="$HOME/.base-tooling"
+      warn "User '$USERNAME' not found via getent; using INSTALL_DIR=$INSTALL_DIR"
+    fi
   fi
+fi
+
+msg "Base tooling update (Day-2) starting..."
+msg "Detected OS: $(uname -s) ($(uname -m))"
+msg "Using user: ${USERNAME}"
+msg "Repo dir: ${INSTALL_DIR}"
+
+[[ -d "${INSTALL_DIR}/.git" ]] || die "Repo not found at ${INSTALL_DIR}. Run install first."
+
+update_repo() {
+  msg "Updating repo..."
+
+  if [[ "$NO_PULL" == "true" ]]; then
+    msg "Skipping git pull (--no-pull)."
+    return 0
+  fi
+
+  # Allow "dirty" working tree if ONLY flake.lock or result/ changed.
+  local dirty
+  dirty="$(git -C "$INSTALL_DIR" status --porcelain \
+    | awk '{print $2}' \
+    | grep -vE '^(flake\.lock|result/|result$)$' || true)"
+
+  if [[ -n "$dirty" ]]; then
+    die "Working tree has uncommitted changes in ${INSTALL_DIR} (excluding flake.lock/result). Commit/stash them, or re-run with --no-pull."
+  fi
+
+  git -C "$INSTALL_DIR" pull --ff-only
+  msg "Current branch $(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD) is up to date."
 }
 
 apply_configuration() {
   msg "Applying declarative configuration..."
+  export BASE_TOOLING_USER="${USERNAME}"
 
   if is_darwin; then
     require_sudo
-
-    # Always run from repo dir so relative paths are stable (result link etc.)
-    cd "${INSTALL_DIR}"
-
-    # Build system configuration (user context). --impure needed for BASE_TOOLING_USER via getEnv.
-    BASE_TOOLING_USER="${USERNAME}" \
-      nix build --impure \
-      --out-link "${INSTALL_DIR}/result" \
-      "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
-
-    # Activate as root (ensure BASE_TOOLING_USER is visible under sudo)
-    sudo env BASE_TOOLING_USER="${USERNAME}" \
-      "${INSTALL_DIR}/result/sw/bin/darwin-rebuild" switch \
+    nix build --impure -o "${INSTALL_DIR}/result" "${INSTALL_DIR}#darwinConfigurations.default.system"
+    sudo --preserve-env=BASE_TOOLING_USER "${INSTALL_DIR}/result/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#default"
+  else
+    nix run github:nix-community/home-manager -- \
+      switch \
       --impure \
-      --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
-
-  else
-    cd "${INSTALL_DIR}"
-
-    # Linux Home Manager configuration for "<user>@linux"
-    BASE_TOOLING_USER="${USERNAME}" \
-      nix run github:nix-community/home-manager -- \
-        switch \
-        --impure \
-        --flake "${INSTALL_DIR}#${USERNAME}@linux"
+      --flake "${INSTALL_DIR}#${USERNAME}@linux"
   fi
 }
 
-update_rancher_linux_repo() {
-  if ! is_linux; then
-    return 0
-  fi
-
-  msg "Linux: Updating Rancher Desktop..."
-
-  require_sudo
-
-  if command -v apt-get >/dev/null 2>&1; then
-    sudo apt-get update -y
-    sudo apt-get install -y rancher-desktop
-  elif command -v dnf >/dev/null 2>&1; then
-    sudo dnf makecache -y
-    sudo dnf upgrade -y rancher-desktop || sudo dnf install -y rancher-desktop
-  fi
-}
-
-
-
-main() {
-  parse_args "$@"
-
-  msg "Base tooling update (Day-2) starting..."
-  msg "Detected OS: $(uname -s) ($(uname -m))"
-  msg "Using user: ${USERNAME}"
-  msg "Repo dir: ${INSTALL_DIR}"
-
-  if [ ! -d "${INSTALL_DIR}/.git" ]; then
-    echo "ERROR: Repo not found at ${INSTALL_DIR}." >&2
-    echo "Run install.sh first (Day-0)." >&2
-    exit 1
-  fi
-
-  require_cmd git
-
-  if [ "$NO_PULL" -eq 0 ]; then
-    msg "Updating repo..."
-    if [ -n "$(git -C "${INSTALL_DIR}" status --porcelain)" ]; then
-      echo "ERROR: Working tree has uncommitted changes in ${INSTALL_DIR}." >&2
-      echo "Commit/stash them, or re-run with --no-pull." >&2
-      exit 1
-    fi
-    git -C "${INSTALL_DIR}" pull --rebase
-  else
-    msg "Skipping git pull (--no-pull)."
-  fi
-
-  update_rancher_linux_repo
-
-  apply_configuration
-  msg "Done."
-}
-
-main "$@"
+update_repo
+apply_configuration
+msg "Done."

@@ -46,7 +46,7 @@ This will:
 After installation
 . Restart terminal.
 . Start Rancher Desktop once.
-. In Rancher Desktop settings select container engine +dockerd (moby)+ for best VS Code Dev Containers compatibility.
+. In Rancher Desktop settings select container engine +dockerd (moby)+ for best VS Code Dev Containers compatibility. (if you are using Linux on arm64 rancher desktop is not supported, you have to manually install e.g. podman)
 . Use +direnv+ + +devenv+ in your projects as usual.
 . You can delete the created result folder
 
