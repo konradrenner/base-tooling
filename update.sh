@@ -36,12 +36,16 @@ Required:
 
 Optional:
   --update-rancher      (Linux) Update Rancher Desktop to latest release (.deb/.rpm)
-  --no-pull             Do not run git pull (useful if you are on a local branch)
+  --no-pull             Do not run git pull (useful if you have local changes)
   --dir <path>          Repo directory (default: ~/.base-tooling)
+
+Notes:
+  - This script will NOT update flake.lock. It builds with --no-write-lock-file.
+  - flake.lock updates should be done manually (platform team), committed, and pushed.
 
 Examples:
   ~/.base-tooling/update.sh --user koni
-  ~/.base-tooling/update.sh --user koni --update-rancher
+  ~/.base-tooling/update.sh --user koni --no-pull
 USAGE
 }
 
@@ -153,17 +157,32 @@ update_rancher_desktop_linux() {
 
 apply_configuration() {
   msg "Applying declarative configuration..."
-  export BASE_TOOLING_USER="${USERNAME}"
+  require_cmd nix
+
+  # Always put the build output link into the repo dir, not the current working directory.
+  local out_link="${INSTALL_DIR}/result"
 
   if is_darwin; then
     require_sudo
-    nix build --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
-    sudo ./result/sw/bin/darwin-rebuild switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+
+    # Build in user context; DO NOT write flake.lock.
+    BASE_TOOLING_USER="${USERNAME}" \
+      nix build --impure --no-write-lock-file \
+      --out-link "${out_link}" \
+      "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
+
+    # Activate as root; preserve BASE_TOOLING_USER; also do not write lock file.
+    sudo env BASE_TOOLING_USER="${USERNAME}" \
+      "${out_link}/sw/bin/darwin-rebuild" switch \
+      --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}" \
+      --no-write-lock-file
   else
-    nix run github:nix-community/home-manager -- \
-      switch \
-      --impure \
-      --flake "${INSTALL_DIR}#${USERNAME}@linux"
+    # Linux Home Manager configuration for "<user>@linux"; DO NOT write flake.lock.
+    BASE_TOOLING_USER="${USERNAME}" \
+      nix run --no-write-lock-file github:nix-community/home-manager -- \
+        switch \
+        --impure \
+        --flake "${INSTALL_DIR}#${USERNAME}@linux"
   fi
 }
 

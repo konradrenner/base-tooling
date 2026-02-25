@@ -60,13 +60,23 @@ Go to the local checkout and run the update script (default path is a hidden dir
 ----
 
 This will:
-. +git pull --rebase+
-. re-apply the configuration (+switch+)
+* Pull the latest changes from the repository
+* Rebuild and activate the system configuration
 
-Make changes
-. Edit files in ~/.base-tooling
-. Commit + push
-. On a machine you want to update: run ~/.base-tooling/update.sh
+It does NOT update flake inputs automatically.
+
+### Updating Nix dependencies
+
+Updating `flake.lock` must be done manually and is reserved for "central rollout and testing" (would be done from a platform team in a production environment):
+
+[source,bash]
+----
+    nix flake update
+    git commit -am "Update flake inputs"
+    git push
+----
+
+Therefore, just maintainers should update `flake.lock` locally, test it and then push it.
 
 == Troubleshooting
 
