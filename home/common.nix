@@ -1,4 +1,4 @@
-{ config, pkgs, username, ... }:
+{ config, pkgs, lib, username, ... }:
 
 let
   # Home Manager expects an absolute Nix *path* (not a string)
@@ -8,8 +8,8 @@ let
     else /. + "/home/${username}";
 in
 {
-  home.username = username;
-  home.homeDirectory = homeDir;
+  home.username = lib.mkForce username;
+  home.homeDirectory = lib.mkForce homeDir;
 
   # Set once when adopting Home Manager; don't change later.
   home.stateVersion = "24.11";
