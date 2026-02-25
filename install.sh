@@ -277,11 +277,6 @@ apply_configuration() {
   fi
 }
 
-# Backward compatible name (old call site)
-install_rancher_desktop_linux() {
-  install_rancher_linux_repo
-}
-
 
 main() {
   parse_args "$@"
