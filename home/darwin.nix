@@ -1,20 +1,12 @@
-{ config, pkgs, username, ... }:
+{ config, pkgs, ... }:
 
 {
   xdg.enable = true;
 
-  programs.zsh = {
-    enable = true;
-    enableCompletion = true;
-    autosuggestion.enable = true;
-    syntaxHighlighting.enable = true;
-
-    dotDir = config.home.homeDirectory;
-
-    initContent = ''
-      setopt HIST_IGNORE_ALL_DUPS
-      setopt HIST_REDUCE_BLANKS
-      export EDITOR=${EDITOR:-code}
-    '';
+  # macOS ls colors
+  home.sessionVariables = {
+    CLICOLOR = "1";
+    # classic-ish color scheme
+    LSCOLORS = "GxFxCxDxBxegedabagaced";
   };
 }

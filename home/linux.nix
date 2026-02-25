@@ -1,14 +1,8 @@
-{ config, pkgs, username, ... }:
+{ config, pkgs, ... }:
 
 {
-  imports = [ ./common.nix ];
-  # Linux-specific Home Manager configuration
-
-  programs.bash = {
-    enable = true;
-    enableCompletion = true;
-  };
-
-  # Optional baseline
   xdg.enable = true;
+
+  # Optional: keep bash available (some servers/scripts expect it)
+  programs.bash.enable = true;
 }

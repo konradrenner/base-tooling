@@ -44,7 +44,7 @@ This will:
 .. Linux: +homeConfigurations.konrad@linux+
 
 After installation
-. Open a new terminal.
+. Restart terminal.
 . Start Rancher Desktop once.
 . In Rancher Desktop settings select container engine +dockerd (moby)+ for best VS Code Dev Containers compatibility.
 . Use +direnv+ + +devenv+ in your projects as usual.
@@ -71,9 +71,9 @@ Updating `flake.lock` must be done manually and is reserved for "central rollout
 
 [source,bash]
 ----
-    nix flake update
-    git commit -am "Update flake inputs"
-    git push
+nix flake update
+git commit -am "Update flake inputs"
+git push
 ----
 
 Therefore, just maintainers should update `flake.lock` locally, test it and then push it.

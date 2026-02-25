@@ -260,21 +260,23 @@ clone_or_update_repo() {
 
 apply_configuration() {
   msg "Applying declarative configuration..."
-
-  # Ensure flake can read the username via builtins.getEnv
   export BASE_TOOLING_USER="${USERNAME}"
 
   if is_darwin; then
     require_sudo
 
-    # Build system configuration (user context)
-    BASE_TOOLING_USER="${USERNAME}" nix build -L --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
+    # Always put result into the repo, not wherever the user runs curl from:
+    nix build --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system" \
+      --out-link "${INSTALL_DIR}/result"
 
-    # Activate as root (sudo drops env by default, so pass it explicitly)
-    sudo env BASE_TOOLING_USER="${USERNAME}" ./result/sw/bin/darwin-rebuild switch -L --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+    # Activate as root, keep BASE_TOOLING_USER
+    sudo env BASE_TOOLING_USER="${USERNAME}" \
+      "${INSTALL_DIR}/result/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+
   else
+    # Linux: create backups automatically if zsh files already exist
     nix run github:nix-community/home-manager -- \
-      switch \
+      switch -b before-hm \
       --impure \
       --flake "${INSTALL_DIR}#${USERNAME}@linux"
   fi

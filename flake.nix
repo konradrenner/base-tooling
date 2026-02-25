@@ -10,14 +10,12 @@
     nix-darwin.url = "github:nix-darwin/nix-darwin";
     nix-darwin.inputs.nixpkgs.follows = "nixpkgs";
 
-    # Declarative VS Code Marketplace extensions
     nix4vscode.url = "github:nix-community/nix4vscode";
     nix4vscode.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = inputs@{ self, nixpkgs, home-manager, nix-darwin, nix4vscode, ... }:
   let
-    # Read the username from environment (requires --impure).
     username =
       let u = builtins.getEnv "BASE_TOOLING_USER";
       in if u != "" then u else throw ''
@@ -34,11 +32,7 @@
     };
   in
   {
-    # ------------------------------
-    # Linux: home-manager standalone
-#     # ------------------------------
-    # Usage:
-    #   BASE_TOOLING_USER=... nix run github:nix-community/home-manager -- switch --impure --flake .#<user>@linux
+    # Linux: Home Manager standalone
     homeConfigurations."${username}@linux" = home-manager.lib.homeManagerConfiguration {
       pkgs = mkPkgs "x86_64-linux";
       extraSpecialArgs = { inherit username; };
@@ -48,17 +42,11 @@
       ];
     };
 
-    # ----------------------------------------
-    # macOS (Apple Silicon): nix-darwin + HM
-    # ----------------------------------------
-    # Usage:
-    #   BASE_TOOLING_USER=... nix build --impure .#darwinConfigurations.default.system
-    #   sudo BASE_TOOLING_USER=... ./result/sw/bin/darwin-rebuild switch --impure --flake .#default
+    # macOS: nix-darwin + Home Manager
     darwinConfigurations.default = nix-darwin.lib.darwinSystem {
       system = "aarch64-darwin";
       pkgs = mkPkgs "aarch64-darwin";
 
-      # Pass username to nix-darwin modules (e.g. darwin/configuration.nix)
       specialArgs = { inherit username; };
 
       modules = [
@@ -68,9 +56,11 @@
         {
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
+
           home-manager.extraSpecialArgs = { inherit username; };
 
-          home-manager.backupFileExtension = "before-base-tooling";
+          # verhindert "Existing file ~/.zshrc would be clobbered"
+          home-manager.backupFileExtension = "before-hm";
 
           home-manager.users.${username} = {
             imports = [
