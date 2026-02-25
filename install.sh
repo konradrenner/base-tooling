@@ -2,319 +2,222 @@
 set -euo pipefail
 
 # base-tooling install (Day-0)
-# - Linux: Home Manager standalone config <user>@linux
-# - macOS: nix-darwin + Home Manager config default
-# This script is meant to be run via curl | bash.
+# - clones/updates the repo into ~/.base-tooling
+# - applies nix-darwin (macOS) or home-manager (Linux)
+# - ensures bash can see Nix + Home Manager env even if user keeps "default" bash dotfiles
 
-# -----------------
-# UI helpers
-# -----------------
 msg() { printf "\n==> %s\n" "$*"; }
-warn() { printf "warning: %s\n" "$*" >&2; }
 err() { printf "ERROR: %s\n" "$*" >&2; exit 1; }
 
-# -----------------
-# Detect OS/arch
-# -----------------
 is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
 is_linux()  { [[ "$(uname -s)" == "Linux" ]]; }
-arch()      { uname -m; }
 
-# -----------------
-# Args
-# -----------------
-USERNAME=""
-INSTALL_DIR=""
-REPO_URL="https://github.com/konradrenner/base-tooling"
-DARWIN_TARGET="default"
-NO_PULL="0"
+arch() { uname -m; }
 
-usage() {
-  cat <<'USAGE'
-Usage:
-  install.sh --user <name> [--dir <path>] [--no-pull]
+require_cmd() { command -v "$1" >/dev/null 2>&1 || err "Missing command: $1"; }
 
-Examples:
-  curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/install.sh | bash -s -- --user koni
-USAGE
+require_sudo() {
+  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+    msg "Sudo privileges required. You may be prompted for your password."
+    sudo -v
+  fi
 }
+
+USERNAME=""
+NO_PULL="0"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --user) USERNAME="${2:-}"; shift 2;;
-    --dir) INSTALL_DIR="${2:-}"; shift 2;;
     --no-pull) NO_PULL="1"; shift;;
-    -h|--help) usage; exit 0;;
+    -h|--help)
+      cat <<'USAGE'
+Usage: install.sh --user <name> [--no-pull]
+USAGE
+      exit 0
+      ;;
     *) err "Unknown argument: $1";;
   esac
 done
 
-[[ -n "$USERNAME" ]] || { usage; err "--user is required"; }
+[[ -n "$USERNAME" ]] || err "--user is required"
 
-# Default install dir: $HOME/.base-tooling (for the *current* user running the script)
-if [[ -z "$INSTALL_DIR" ]]; then
-  INSTALL_DIR="$HOME/.base-tooling"
-fi
-
-# -----------------
-# Sudo
-# -----------------
-require_sudo() {
-  if ! command -v sudo >/dev/null 2>&1; then
-    err "sudo is required"
-  fi
-  # Warm sudo
-  sudo -v
-}
-
-# -----------------
-# Nix helpers
-# -----------------
-source_nix_profile_if_needed() {
-  # Make nix available even if the current shell/session did not source it.
-  # This is especially important for non-login shells and for fresh installations.
-  if command -v nix >/dev/null 2>&1; then
-    return 0
-  fi
-
-  local candidates=(
-    "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
-    "/nix/var/nix/profiles/default/etc/profile.d/nix.sh"
-    "$HOME/.nix-profile/etc/profile.d/nix.sh"
-  )
-  for f in "${candidates[@]}"; do
-    if [[ -r "$f" ]]; then
-      # shellcheck disable=SC1090
-      . "$f"
-      break
-    fi
-  done
-}
-
-enable_nix_command_and_flakes() {
-  # Idempotent: enable nix-command + flakes via nix.conf
-  # (Many installers already do this; we just ensure it.)
-  local nix_conf
-  if is_darwin; then
-    nix_conf="/etc/nix/nix.conf"
-  else
-    nix_conf="/etc/nix/nix.conf"
-  fi
-
-  if [[ ! -f "$nix_conf" ]]; then
-    return 0
-  fi
-
-  if ! grep -q "experimental-features" "$nix_conf"; then
-    require_sudo
-    sudo sh -c "printf '\nexperimental-features = nix-command flakes\n' >> '$nix_conf'"
-  else
-    # ensure flakes is present
-    if ! grep -q "flakes" "$nix_conf"; then
-      require_sudo
-      sudo sh -c "sed -i.bak 's/^experimental-features *= */experimental-features = nix-command flakes /' '$nix_conf' || true"
-    fi
-  fi
-}
-
-# -----------------
-# Git / repo
-# -----------------
-ensure_git() {
-  if command -v git >/dev/null 2>&1; then
-    return 0
-  fi
-  if is_darwin; then
-    err "git is required on macOS. Install Xcode CLT: xcode-select --install"
-  fi
-  msg "Installing git..."
-  require_sudo
-  sudo apt-get update -y
-  sudo apt-get install -y git
-}
+INSTALL_DIR="${HOME}/.base-tooling"
+REPO_URL="https://github.com/konradrenner/base-tooling.git"
+DARWIN_TARGET="default"
 
 ensure_repo() {
-  msg "Ensuring repo is present at: $INSTALL_DIR"
-  if [[ -d "$INSTALL_DIR/.git" ]]; then
-    msg "Repo already cloned. Fetching latest..."
-    if [[ "$NO_PULL" == "1" ]]; then
-      msg "--no-pull set; skipping git pull."
-      return 0
+  msg "Ensuring repo is present at: ${INSTALL_DIR}"
+
+  if [[ -d "${INSTALL_DIR}/.git" ]]; then
+    msg "Repo already cloned."
+    if [[ "$NO_PULL" == "0" ]]; then
+      msg "Fetching latest..."
+      git -C "$INSTALL_DIR" fetch --all --prune
+      # keep local changes; don't clobber
+      git -C "$INSTALL_DIR" pull --ff-only || msg "Note: fast-forward pull not possible (local commits/changes?). Continuing."
+    else
+      msg "Skipping pull (--no-pull)."
     fi
-    git -C "$INSTALL_DIR" fetch --all --prune
-    git -C "$INSTALL_DIR" checkout -q main || true
-    git -C "$INSTALL_DIR" pull --ff-only
   else
+    msg "Cloning repo..."
     git clone "$REPO_URL" "$INSTALL_DIR"
   fi
 }
 
-# -----------------
-# Linux: Rancher Desktop
-# -----------------
-linux_install_rancher_desktop_repo() {
-  # Official docs currently reference the openSUSE Build Service repo.
-  # We follow those instructions, but keep it idempotent.
-  # If RD is already installed, do nothing.
+# ---- Shell env bootstrapping (Linux + bash) ---------------------------------
+# Goal: even if the user restored ~/.bashrc / ~/.profile, they still get:
+# - Nix profiles in PATH
+# - Home Manager session vars (hm-session-vars.sh), so HM-installed tools (devenv, java, direnv, ...) are visible
+BT_BEGIN="# >>> base-tooling (managed) >>>"
+BT_END="# <<< base-tooling (managed) <<<"
+
+strip_block() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  awk -v b="$BT_BEGIN" -v e="$BT_END" '
+    $0==b {in=1; next}
+    $0==e {in=0; next}
+    !in {print}
+  ' "$file" > "${file}.bt_tmp"
+  mv "${file}.bt_tmp" "$file"
+}
+
+append_block() {
+  local file="$1"
+  local content="$2"
+  mkdir -p "$(dirname "$file")" 2>/dev/null || true
+  touch "$file"
+  strip_block "$file"
+  {
+    printf "\n%s\n" "$BT_BEGIN"
+    printf "%s\n" "$content"
+    printf "%s\n" "$BT_END"
+  } >> "$file"
+}
+
+linux_bash_env_block() {
+  cat <<'EOF'
+# Nix (multi-user + single-user)
+if [ -r "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" ]; then
+  . "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
+fi
+if [ -r "$HOME/.nix-profile/etc/profile.d/nix.sh" ]; then
+  . "$HOME/.nix-profile/etc/profile.d/nix.sh"
+fi
+
+# Home Manager session vars (puts HM packages into PATH, exports vars, etc.)
+if [ -r "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
+  . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
+fi
+
+# Safety: ensure common profile bins are on PATH even if dotfiles were restored
+case ":$PATH:" in
+  *":$HOME/.nix-profile/bin:"*) ;;
+  *) export PATH="$HOME/.nix-profile/bin:$PATH" ;;
+esac
+case ":$PATH:" in
+  *":/nix/var/nix/profiles/default/bin:"*) ;;
+  *) export PATH="/nix/var/nix/profiles/default/bin:$PATH" ;;
+esac
+EOF
+}
+
+ensure_linux_shell_env() {
+  [[ "$(uname -s)" == "Linux" ]] || return 0
+  msg "Linux: Ensuring bash sees Nix + Home Manager environment (idempotent)."
+  local block; block="$(linux_bash_env_block)"
+  append_block "${HOME}/.profile" "$block"
+  append_block "${HOME}/.bashrc" "$block"
+}
+
+# ---- Rancher Desktop --------------------------------------------------------
+install_rancher_desktop_macos() {
+  msg "macOS: Installing Rancher Desktop via Homebrew cask (if missing)..."
+  require_cmd brew
+  if brew list --cask rancher >/dev/null 2>&1; then
+    msg "Rancher Desktop already installed."
+  else
+    brew install --cask rancher
+  fi
+}
+
+install_rancher_desktop_linux() {
+  msg "Linux: Installing Rancher Desktop from official repo (if possible)..."
+  # Rancher Desktop docs: Linux requires x86_64. (We auto-fallback for arm64.)
+  if [[ "$(arch)" != "x86_64" && "$(arch)" != "amd64" ]]; then
+    msg "Linux: Detected arch $(arch). Rancher Desktop packages are x86_64-only; skipping."
+    msg "Linux: Installing Podman as fallback (rootful; works on arm64)."
+    require_sudo
+    sudo apt-get update -y
+    sudo apt-get install -y podman podman-docker podman-compose uidmap slirp4netns
+    return 0
+  fi
+
   if command -v rancher-desktop >/dev/null 2>&1; then
     msg "Rancher Desktop already installed."
     return 0
   fi
 
-  msg "Linux: Installing Rancher Desktop via official repository..."
   require_sudo
-
-  # Dependencies
   sudo apt-get update -y
   sudo apt-get install -y ca-certificates curl gnupg
 
-  # Keyring
-  sudo install -d -m 0755 /etc/apt/keyrings
-  if [[ ! -f /etc/apt/keyrings/rancher-desktop.gpg ]]; then
-    curl -fsSL https://download.opensuse.org/repositories/isv:/Rancher:/stable/deb/Release.key \
-      | sudo gpg --dearmor -o /etc/apt/keyrings/rancher-desktop.gpg
-    sudo chmod a+r /etc/apt/keyrings/rancher-desktop.gpg
-  fi
+  # From Rancher Desktop docs (deb): https://docs.rancherdesktop.io/getting-started/installation/
+  sudo mkdir -p /usr/share/keyrings
+  curl -fsSL https://download.opensuse.org/repositories/isv:/Rancher:/stable/deb/Release.key \
+    | gpg --dearmor \
+    | sudo dd status=none of=/usr/share/keyrings/isv-rancher-stable-archive-keyring.gpg
 
-  # Repo entry
-  if [[ ! -f /etc/apt/sources.list.d/rancher-desktop.list ]]; then
-    echo "deb [signed-by=/etc/apt/keyrings/rancher-desktop.gpg] https://download.opensuse.org/repositories/isv:/Rancher:/stable/deb/ ./" \
-      | sudo tee /etc/apt/sources.list.d/rancher-desktop.list >/dev/null
-  fi
+  echo "deb [signed-by=/usr/share/keyrings/isv-rancher-stable-archive-keyring.gpg] https://download.opensuse.org/repositories/isv:/Rancher:/stable/deb/ ./" \
+    | sudo dd status=none of=/etc/apt/sources.list.d/isv-rancher-stable.list
 
   sudo apt-get update -y
   sudo apt-get install -y rancher-desktop
 }
 
-# -----------------
-# Linux: shell integration (bulletproof)
-# -----------------
-linux_ensure_nix_on_path_for_bash() {
-  # Goal:
-  # - keep Ubuntu's default bash
-  # - still have nix + HM profile binaries (devenv, java, etc.) on PATH
-  # - survive users restoring ~/.bashrc / ~/.profile
-  #
-  # Strategy:
-  # 1) System-wide: ensure /etc/bash.bashrc sources nix-daemon.sh (interactive shells)
-  # 2) User-level: add a tiny marker block to ~/.bashrc (works even without login shell)
-
-  local nix_daemon_sh="/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
-  local nix_sh="/nix/var/nix/profiles/default/etc/profile.d/nix.sh"
-
-  if [[ ! -r "$nix_daemon_sh" && ! -r "$nix_sh" ]]; then
-    warn "Could not find Nix profile scripts under /nix/var/nix/profiles/default/etc/profile.d. PATH integration may not work."
-    return 0
-  fi
-
-  require_sudo
-
-  # 1) /etc/bash.bashrc (interactive shells)
-  local sys_marker_begin="# >>> base-tooling nix env >>>"
-  local sys_marker_end="# <<< base-tooling nix env <<<"
-  if ! sudo grep -qF "$sys_marker_begin" /etc/bash.bashrc 2>/dev/null; then
-    sudo tee -a /etc/bash.bashrc >/dev/null <<EOF
-
-$sys_marker_begin
-# Make Nix available in interactive bash shells.
-if [ -r "$nix_daemon_sh" ]; then
-  . "$nix_daemon_sh"
-elif [ -r "$nix_sh" ]; then
-  . "$nix_sh"
-fi
-$sys_marker_end
-EOF
-  fi
-
-  # 2) ~/.bashrc (user)
-  local user_bashrc="$HOME/.bashrc"
-  local user_marker_begin="# >>> base-tooling nix env (user) >>>"
-  local user_marker_end="# <<< base-tooling nix env (user) <<<"
-
-  touch "$user_bashrc"
-  if ! grep -qF "$user_marker_begin" "$user_bashrc"; then
-    cat >> "$user_bashrc" <<EOF
-
-$user_marker_begin
-# Make Nix + Home Manager profile binaries available in interactive shells.
-if [ -r "$nix_daemon_sh" ]; then
-  . "$nix_daemon_sh"
-elif [ -r "$nix_sh" ]; then
-  . "$nix_sh"
-fi
-
-# Load Home Manager session variables if present (adds HM-managed bins to PATH)
-if [ -r "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
-  . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
-fi
-
-# direnv hook (only if direnv is installed)
-if command -v direnv >/dev/null 2>&1; then
-  eval "$(direnv hook bash)"
-fi
-$user_marker_end
-EOF
-  fi
-}
-
-# -----------------
-# Apply configuration
-# -----------------
+# ---- Apply declarative config ----------------------------------------------
 apply_configuration() {
   msg "Applying declarative configuration..."
-
-  export BASE_TOOLING_USER="$USERNAME"
-
-  # Ensure nix is available in this script execution.
-  source_nix_profile_if_needed
+  export BASE_TOOLING_USER="${USERNAME}"
 
   if is_darwin; then
     require_sudo
-
-    # Build system configuration (user context). --impure needed for BASE_TOOLING_USER via getEnv.
-    nix build --impure "$INSTALL_DIR#darwinConfigurations.${DARWIN_TARGET}.system"
-
-    # Activate as root; pass BASE_TOOLING_USER into sudo environment explicitly.
-    sudo env BASE_TOOLING_USER="$USERNAME" ./result/sw/bin/darwin-rebuild switch --impure --flake "$INSTALL_DIR#${DARWIN_TARGET}"
+    # Build system derivation (user context). --impure needed for BASE_TOOLING_USER via getEnv.
+    nix build --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system" -L
+    # Activate as root
+    sudo ./result/sw/bin/darwin-rebuild switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}" -L
   else
     # Linux Home Manager configuration for "<user>@linux"
-    # -b <ext> ensures existing dotfiles are backed up instead of aborting.
+    # -b backups conflicting dotfiles automatically (avoids "would be clobbered")
     nix run github:nix-community/home-manager -- \
       switch \
+      -b before-hm \
       --impure \
-      --flake "$INSTALL_DIR#${USERNAME}@linux" \
-      -b before-hm
-
-    # Make sure bash always sees nix + HM profile tools.
-    linux_ensure_nix_on_path_for_bash
-
-    # Optional: Rancher Desktop
-    linux_install_rancher_desktop_repo
+      --flake "${INSTALL_DIR}#${USERNAME}@linux"
   fi
 }
 
 main() {
   msg "Base tooling install (Day-0) starting..."
+  msg "Detected OS: $(uname -s) ($(arch))"
+  msg "Using user: ${USERNAME}"
+  msg "Repo dir: ${INSTALL_DIR}"
 
-  if is_darwin; then
-    msg "Detected OS: Darwin ($(arch))"
-  elif is_linux; then
-    msg "Detected OS: Linux ($(arch))"
-  else
-    err "Unsupported OS: $(uname -s)"
-  fi
+  require_cmd git
+  require_cmd nix
 
-  msg "Using user: $USERNAME"
-  msg "Repo dir: $INSTALL_DIR"
-
-  ensure_git
   ensure_repo
 
-  msg "Nix already installed (assumed)."
-  msg "Enabling nix-command + flakes (idempotent)."
-  enable_nix_command_and_flakes
+  if is_darwin; then
+    install_rancher_desktop_macos
+  elif is_linux; then
+    install_rancher_desktop_linux
+  fi
 
   apply_configuration
+
+  ensure_linux_shell_env
 
   msg "Done."
   if is_linux; then
