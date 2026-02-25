@@ -8,11 +8,11 @@ let
     else "/home/${username}";
 in
 {
-  home.username = username;
-  home.homeDirectory = homeDir;
+  #home.username = username;
+  #home.homeDirectory = homeDir;
 
   # Set once when adopting Home Manager; don't change later.
-  home.stateVersion = "24.11";
+  #home.stateVersion = "24.11";
 
   programs.git.enable = true;
 
