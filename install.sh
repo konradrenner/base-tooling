@@ -260,18 +260,19 @@ clone_or_update_repo() {
 
 apply_configuration() {
   msg "Applying declarative configuration..."
+
+  # Ensure flake can read the username via builtins.getEnv
   export BASE_TOOLING_USER="${USERNAME}"
 
   if is_darwin; then
     require_sudo
 
-    # Build system configuration (user context). --impure needed for BASE_TOOLING_USER via getEnv.
-    nix build --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
+    # Build system configuration (user context)
+    BASE_TOOLING_USER="${USERNAME}" nix build -L --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
 
-    # Activate as root
-    sudo ./result/sw/bin/darwin-rebuild switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+    # Activate as root (sudo drops env by default, so pass it explicitly)
+    sudo env BASE_TOOLING_USER="${USERNAME}" ./result/sw/bin/darwin-rebuild switch -L --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
   else
-    # Linux Home Manager configuration for "<user>@linux"
     nix run github:nix-community/home-manager -- \
       switch \
       --impure \

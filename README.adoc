@@ -48,6 +48,7 @@ After installation
 . Start Rancher Desktop once.
 . In Rancher Desktop settings select container engine +dockerd (moby)+ for best VS Code Dev Containers compatibility.
 . Use +direnv+ + +devenv+ in your projects as usual.
+. You can delete the created result folder
 
 == Day-2: Updates / changes to the base setup
 
