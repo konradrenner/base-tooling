@@ -79,12 +79,10 @@
               ./home/darwin.nix
             ];
 
-            # <-- WICHTIG: nix-darwin HM-Submodul erwartet das hier sauber unter `.home`
-            home = {
-              username = username;
-              homeDirectory = "/Users/${username}";
-              stateVersion = "24.11";
-            };
+            # EXPLIZIT auf dem richtigen Pfad setzen:
+            home.username = username;
+            home.homeDirectory = "/Users/${username}";
+            home.stateVersion = "24.11";
           };
         }
       ];
