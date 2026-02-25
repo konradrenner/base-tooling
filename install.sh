@@ -295,9 +295,6 @@ main() {
   # macOS: Rancher Desktop installed declaratively via nix-darwin Homebrew cask (brew must exist)
   ensure_homebrew_darwin
 
-  # Linux: install Rancher Desktop via upstream package (optional but default)
-  install_rancher_desktop_linux
-
   ensure_git
   clone_or_update_repo
 
