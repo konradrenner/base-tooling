@@ -260,26 +260,88 @@ clone_or_update_repo() {
 
 apply_configuration() {
   msg "Applying declarative configuration..."
-  export BASE_TOOLING_USER="${USERNAME}"
 
   if is_darwin; then
     require_sudo
 
-    # Always put result into the repo, not wherever the user runs curl from:
-    nix build --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system" \
-      --out-link "${INSTALL_DIR}/result"
+    # Always run from repo dir so relative paths are stable (result link etc.)
+    cd "${INSTALL_DIR}"
 
-    # Activate as root, keep BASE_TOOLING_USER
+    # Build system configuration (user context). --impure needed for BASE_TOOLING_USER via getEnv.
+    BASE_TOOLING_USER="${USERNAME}" \
+      nix build --impure \
+      --out-link "${INSTALL_DIR}/result" \
+      "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
+
+    # Activate as root (ensure BASE_TOOLING_USER is visible under sudo)
     sudo env BASE_TOOLING_USER="${USERNAME}" \
-      "${INSTALL_DIR}/result/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+      "${INSTALL_DIR}/result/sw/bin/darwin-rebuild" switch \
+      --impure \
+      --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
 
   else
-    # Linux: create backups automatically if zsh files already exist
-    nix run github:nix-community/home-manager -- \
-      switch -b before-hm \
-      --impure \
-      --flake "${INSTALL_DIR}#${USERNAME}@linux"
+    cd "${INSTALL_DIR}"
+
+    # Linux Home Manager configuration for "<user>@linux"
+    BASE_TOOLING_USER="${USERNAME}" \
+      nix run github:nix-community/home-manager -- \
+        switch \
+        --impure \
+        --flake "${INSTALL_DIR}#${USERNAME}@linux"
   fi
+}
+
+install_rancher_linux() {
+  if [ "$(uname -s)" != "Linux" ]; then
+    return 0
+  fi
+
+  if command -v rancher-desktop >/dev/null 2>&1; then
+    msg "Rancher Desktop already installed."
+    return 0
+  fi
+
+  msg "Installing Rancher Desktop (Linux)..."
+
+  require_cmd curl
+  require_sudo
+
+  ARCH="$(uname -m)"
+  case "$ARCH" in
+    x86_64) ARCH="x86_64" ;;
+    aarch64|arm64) ARCH="aarch64" ;;
+    *)
+      echo "Unsupported architecture: $ARCH"
+      exit 1
+      ;;
+  esac
+
+  TMP_DIR="$(mktemp -d)"
+
+  # get latest tag
+  TAG="$(curl -fsSL https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest \
+    | grep -m1 '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')"
+
+  if command -v apt-get >/dev/null 2>&1; then
+    FILE="rancher-desktop-${TAG#v}-linux-${ARCH}.deb"
+    URL="https://github.com/rancher-sandbox/rancher-desktop/releases/download/${TAG}/${FILE}"
+
+    curl -L "$URL" -o "$TMP_DIR/$FILE"
+    sudo apt install -y "$TMP_DIR/$FILE"
+
+  elif command -v dnf >/dev/null 2>&1; then
+    FILE="rancher-desktop-${TAG#v}-linux-${ARCH}.rpm"
+    URL="https://github.com/rancher-sandbox/rancher-desktop/releases/download/${TAG}/${FILE}"
+
+    curl -L "$URL" -o "$TMP_DIR/$FILE"
+    sudo dnf install -y "$TMP_DIR/$FILE"
+
+  else
+    echo "Unsupported package manager (only apt & dnf supported)."
+    exit 1
+  fi
+
+  msg "Rancher Desktop installed."
 }
 
 main() {
@@ -303,6 +365,9 @@ main() {
 
   ensure_git
   clone_or_update_repo
+
+  install_rancher_linux
+
   apply_configuration
 
   msg "Done."
