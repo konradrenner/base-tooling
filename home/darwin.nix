@@ -21,7 +21,7 @@
 
       autoload -Uz colors && colors
 
-      PROMPT='%F{green}%n@%m%f:%F{blue}%~%f%# '
+      PROMPT='%F{green}%n@%m%f:%F{blue}%~%f%(#.#.$) '
 
       zstyle ':completion:*' menu select
       zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
