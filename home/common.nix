@@ -1,18 +1,18 @@
-{ config, pkgs, username, ... }:
+{ config, pkgs, lib, username, ... }:
 
 let
-  # Must be an absolute *path* (not just a string) to satisfy HM type checks.
+  # HM erwartet hier einen Nix-PATH (kein String!)
   homeDir =
     if pkgs.stdenv.isDarwin
-    then "/Users/${username}"
-    else "/home/${username}";
+    then /. + "/Users/${username}"
+    else /. + "/home/${username}";
 in
 {
-  #home.username = username;
-  #home.homeDirectory = homeDir;
+  home.username = username;
+  home.homeDirectory = lib.mkForce homeDir;
 
   # Set once when adopting Home Manager; don't change later.
-  #home.stateVersion = "24.11";
+  home.stateVersion = "24.11";
 
   programs.git.enable = true;
 
@@ -24,8 +24,7 @@ in
   programs.vscode = {
     enable = true;
 
-    # VS Code Marketplace extensions (via nix4vscode overlay)
-    extensions = pkgs.nix4vscode.forVscode [
+    profiles.default.extensions = pkgs.nix4vscode.forVscode [
       "ms-vscode-remote.remote-containers"
       "asciidoctor.asciidoctor-vscode"
       "jebbs.plantuml"
@@ -35,23 +34,14 @@ in
   };
 
   home.packages = with pkgs; [
-    # IDEs / Editor
     vscode
     netbeans
-
-    # Essentials
     curl
     git
-
-    # Dev env tooling
     devenv
-
-    # Diagramming
     graphviz
     plantuml
     fontconfig
-
-    # Java
     graalvmPackages.graalvm-ce
   ];
 }

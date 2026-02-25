@@ -1,20 +1,31 @@
-{ pkgs, username, ... }:
+{ pkgs, lib, username, ... }:
 
 {
-  # -----------------------------
-  # nix-darwin system config
-  # -----------------------------
+  # nix-darwin now manages the nix-daemon automatically when nix.enable = true
+  nix.enable = true;
 
-  # Multi-user Nix on macOS
-  services.nix-daemon.enable = true;
-
-  # Allow unfree packages (e.g. VS Code)
   nixpkgs.config.allowUnfree = true;
 
-  # -----------------------------
+  # Required for a bunch of "primary-user" options (homebrew, defaults, etc.)
+  system.primaryUser = username;
+
+  # Recommended Nix settings for flakes
+  nix.settings = {
+    experimental-features = [ "nix-command" "flakes" ];
+    trusted-users = [ "root" username ];
+  };
+
+  # Shells
+  environment.shells = [ pkgs.zsh ];
+  programs.zsh.enable = true;
+
+  # Ensure the user exists + has the right shell (home is a string here, that's fine)
+  users.users.${username} = {
+    home = "/Users/${username}";
+    shell = pkgs.zsh;
+  };
+
   # Homebrew (declarative)
-  # -----------------------------
-  # Note: Homebrew must exist. install.sh ensures it on Day-0.
   homebrew = {
     enable = true;
 
@@ -24,31 +35,17 @@
       cleanup = "zap";
     };
 
-    # Rancher Desktop (Dev Containers engine option)
     casks = [
       "rancher"
     ];
   };
 
-  # -----------------------------
-  # Shells / user
-  # -----------------------------
-  environment.shells = [ pkgs.zsh ];
-
-  users.users.${username} = {
-    shell = pkgs.zsh;
-  };
-
-  # -----------------------------
-  # macOS defaults (safe baseline)
-  # -----------------------------
+  # macOS defaults
   system.defaults = {
-    #dock.autohide = true;
     finder.AppleShowAllExtensions = true;
     NSGlobalDomain.AppleShowAllExtensions = true;
   };
 
-  # Required for nix-darwin state tracking
+  # nix-darwin state tracking
   system.stateVersion = 4;
-
 }
