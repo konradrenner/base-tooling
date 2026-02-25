@@ -68,20 +68,16 @@
         {
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
-
-          # username muss in common.nix ankommen
           home-manager.extraSpecialArgs = { inherit username; };
 
-          # NUR EINE Definition für den User, und die importiert common + darwin
           home-manager.users.${username} = {
             imports = [
               ./home/common.nix
               ./home/darwin.nix
             ];
 
-            # EXPLIZIT auf dem richtigen Pfad setzen:
             home.username = username;
-            home.homeDirectory = "/Users/${username}";
+            home.homeDirectory = /. + "/Users/${username}";
             home.stateVersion = "24.11";
           };
         }

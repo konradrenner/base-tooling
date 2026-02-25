@@ -43,11 +43,12 @@
   # macOS defaults (safe baseline)
   # -----------------------------
   system.defaults = {
-    dock.autohide = true;
+    #dock.autohide = true;
     finder.AppleShowAllExtensions = true;
     NSGlobalDomain.AppleShowAllExtensions = true;
   };
 
   # Required for nix-darwin state tracking
   system.stateVersion = 4;
+
 }
