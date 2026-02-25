@@ -148,67 +148,53 @@ ensure_homebrew_darwin() {
   require_cmd brew
 }
 
-install_rancher_desktop_linux() {
-  if ! is_linux; then return 0; fi
+install_rancher_linux_repo() {
+  if ! is_linux; then
+    return 0
+  fi
 
-  msg "Linux: Installing Rancher Desktop from upstream release (.deb/.rpm) if missing..."
   if command -v rancher-desktop >/dev/null 2>&1; then
     msg "Rancher Desktop already installed."
     return 0
   fi
 
-  local pkgtype=""
-  if command -v apt-get >/dev/null 2>&1; then
-    pkgtype="deb"
-  elif command -v dnf >/dev/null 2>&1 || command -v rpm >/dev/null 2>&1; then
-    pkgtype="rpm"
-  else
-    msg "No supported package manager found (need apt or rpm). Skipping Rancher Desktop install."
-    return 0
-  fi
+  msg "Linux: Installing Rancher Desktop via official repository..."
 
   require_sudo
   require_cmd curl
 
-  local arch
-  arch="$(uname -m)"
-  case "$arch" in
-    x86_64) arch="x86_64" ;;
-    aarch64|arm64) arch="aarch64" ;;
-  esac
+  if command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update -y
+    sudo apt-get install -y ca-certificates curl gnupg
 
-  local tag asset_url
-  tag="$(curl -fsSL https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest \
-    | grep -m1 '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')"
+    sudo mkdir -p /etc/apt/keyrings
 
-  asset_url="$(curl -fsSL "https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/tags/${tag}" \
-    | grep -Eo 'https://[^"]+\.(deb|rpm)' \
-    | grep -E "${pkgtype}$" \
-    | grep -E "${arch}" \
-    | head -n1)"
-
-  if [ -z "$asset_url" ]; then
-    msg "Could not find matching ${pkgtype} asset for arch ${arch}. Skipping."
-    return 0
-  fi
-
-  local tmp pkg
-  tmp="$(mktemp -d)"
-  pkg="${tmp}/rancher-desktop.${pkgtype}"
-  curl -fsSL "$asset_url" -o "$pkg"
-
-  if [ "$pkgtype" = "deb" ]; then
-    sudo apt-get update
-    sudo apt-get install -y "$pkg"
-  else
-    if command -v dnf >/dev/null 2>&1; then
-      sudo dnf install -y "$pkg"
-    else
-      sudo rpm -Uvh --replacepkgs "$pkg"
+    if [ ! -f /etc/apt/keyrings/rancher.gpg ]; then
+      curl -fsSL https://rpm.rancher.io/public.key | \
+        sudo gpg --dearmor -o /etc/apt/keyrings/rancher.gpg
+      sudo chmod 0644 /etc/apt/keyrings/rancher.gpg
     fi
+
+    if [ ! -f /etc/apt/sources.list.d/rancher-desktop.list ]; then
+      echo "deb [signed-by=/etc/apt/keyrings/rancher.gpg] https://rpm.rancher.io/deb stable main" | \
+        sudo tee /etc/apt/sources.list.d/rancher-desktop.list >/dev/null
+    fi
+
+    sudo apt-get update -y
+    sudo apt-get install -y rancher-desktop
+
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo curl -fsSL -o /etc/yum.repos.d/rancher-desktop.repo \
+      https://rpm.rancher.io/rancher-desktop.repo
+
+    sudo dnf makecache -y
+    sudo dnf install -y rancher-desktop
+
+  else
+    msg "No supported package manager found. Skipping Rancher Desktop."
   fi
 
-  msg "Rancher Desktop installed. Start it once and select 'dockerd (moby)' for VS Code Dev Containers."
+  msg "Rancher Desktop installed successfully."
 }
 
 ensure_git() {
@@ -291,74 +277,7 @@ apply_configuration() {
   fi
 }
 
-install_rancher_linux() {
-  if [ "$(uname -s)" != "Linux" ]; then
-    return 0
-  fi
 
-  if command -v rancher-desktop >/dev/null 2>&1; then
-    msg "Rancher Desktop already installed."
-    return 0
-  fi
-
-  msg "Linux: Installing Rancher Desktop from upstream release (.deb/.rpm)..."
-
-  require_cmd curl
-  require_sudo
-
-  ARCH="$(uname -m)"
-  case "$ARCH" in
-    x86_64)
-      ARCH="x86_64"
-      ;;
-    aarch64|arm64)
-      ARCH="arm64"
-      ;;
-    *)
-      echo "Unsupported architecture: $ARCH"
-      exit 1
-      ;;
-  esac
-
-  CACHE_DIR="${HOME}/.cache/base-tooling"
-  mkdir -p "${CACHE_DIR}"
-
-  # Get latest release tag
-  TAG="$(curl -fsSL https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest \
-    | grep -m1 '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')"
-
-  if [ -z "$TAG" ]; then
-    echo "Failed to determine latest Rancher Desktop release."
-    exit 1
-  fi
-
-  if command -v apt-get >/dev/null 2>&1; then
-    FILE="rancher-desktop-${TAG#v}-linux-${ARCH}.deb"
-    URL="https://github.com/rancher-sandbox/rancher-desktop/releases/download/${TAG}/${FILE}"
-
-    msg "Downloading ${FILE}..."
-    curl -fL "$URL" -o "${CACHE_DIR}/${FILE}"
-
-    msg "Installing via apt..."
-    sudo apt install -y "${CACHE_DIR}/${FILE}"
-
-  elif command -v dnf >/dev/null 2>&1; then
-    FILE="rancher-desktop-${TAG#v}-linux-${ARCH}.rpm"
-    URL="https://github.com/rancher-sandbox/rancher-desktop/releases/download/${TAG}/${FILE}"
-
-    msg "Downloading ${FILE}..."
-    curl -fL "$URL" -o "${CACHE_DIR}/${FILE}"
-
-    msg "Installing via dnf..."
-    sudo dnf install -y "${CACHE_DIR}/${FILE}"
-
-  else
-    echo "Unsupported package manager (only apt & dnf supported)."
-    exit 1
-  fi
-
-  msg "Rancher Desktop installed successfully."
-}
 
 main() {
   parse_args "$@"
@@ -382,7 +301,7 @@ main() {
   ensure_git
   clone_or_update_repo
 
-  install_rancher_linux
+  install_rancher_linux_repo
 
   apply_configuration
 

@@ -98,74 +98,25 @@ apply_configuration() {
   fi
 }
 
-install_rancher_linux() {
-  if [ "$(uname -s)" != "Linux" ]; then
+update_rancher_linux_repo() {
+  if ! is_linux; then
     return 0
   fi
 
-  if command -v rancher-desktop >/dev/null 2>&1; then
-    msg "Rancher Desktop already installed."
-    return 0
-  fi
+  msg "Linux: Updating Rancher Desktop..."
 
-  msg "Linux: Installing Rancher Desktop from upstream release (.deb/.rpm)..."
-
-  require_cmd curl
   require_sudo
 
-  ARCH="$(uname -m)"
-  case "$ARCH" in
-    x86_64)
-      ARCH="x86_64"
-      ;;
-    aarch64|arm64)
-      ARCH="arm64"
-      ;;
-    *)
-      echo "Unsupported architecture: $ARCH"
-      exit 1
-      ;;
-  esac
-
-  CACHE_DIR="${HOME}/.cache/base-tooling"
-  mkdir -p "${CACHE_DIR}"
-
-  # Get latest release tag
-  TAG="$(curl -fsSL https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest \
-    | grep -m1 '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')"
-
-  if [ -z "$TAG" ]; then
-    echo "Failed to determine latest Rancher Desktop release."
-    exit 1
-  fi
-
   if command -v apt-get >/dev/null 2>&1; then
-    FILE="rancher-desktop-${TAG#v}-linux-${ARCH}.deb"
-    URL="https://github.com/rancher-sandbox/rancher-desktop/releases/download/${TAG}/${FILE}"
-
-    msg "Downloading ${FILE}..."
-    curl -fL "$URL" -o "${CACHE_DIR}/${FILE}"
-
-    msg "Installing via apt..."
-    sudo apt install -y "${CACHE_DIR}/${FILE}"
-
+    sudo apt-get update -y
+    sudo apt-get install -y rancher-desktop
   elif command -v dnf >/dev/null 2>&1; then
-    FILE="rancher-desktop-${TAG#v}-linux-${ARCH}.rpm"
-    URL="https://github.com/rancher-sandbox/rancher-desktop/releases/download/${TAG}/${FILE}"
-
-    msg "Downloading ${FILE}..."
-    curl -fL "$URL" -o "${CACHE_DIR}/${FILE}"
-
-    msg "Installing via dnf..."
-    sudo dnf install -y "${CACHE_DIR}/${FILE}"
-
-  else
-    echo "Unsupported package manager (only apt & dnf supported)."
-    exit 1
+    sudo dnf makecache -y
+    sudo dnf upgrade -y rancher-desktop || sudo dnf install -y rancher-desktop
   fi
-
-  msg "Rancher Desktop installed successfully."
 }
+
+
 
 main() {
   parse_args "$@"
@@ -195,7 +146,7 @@ main() {
     msg "Skipping git pull (--no-pull)."
   fi
 
-  install_rancher_linux
+  update_rancher_linux_repo
 
   apply_configuration
   msg "Done."
