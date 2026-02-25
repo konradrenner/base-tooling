@@ -1,138 +1,183 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ----------------------------
 # base-tooling update (Day-2)
-# ----------------------------
+# - Pull latest repo changes (unless --no-pull)
+# - Re-apply configuration
 
-SCRIPT_NAME="$(basename "$0")"
+msg() { printf "\n==> %s\n" "$*"; }
+warn() { printf "warning: %s\n" "$*" >&2; }
+err() { printf "ERROR: %s\n" "$*" >&2; exit 1; }
+
+is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
+is_linux()  { [[ "$(uname -s)" == "Linux" ]]; }
+arch()      { uname -m; }
 
 USERNAME=""
 INSTALL_DIR=""
+REPO_URL="https://github.com/konradrenner/base-tooling"
 DARWIN_TARGET="default"
 NO_PULL="0"
 
-msg() { echo -e "\n==> $*"; }
-warn() { echo "WARNING: $*" >&2; }
-die() { echo "ERROR: $*" >&2; exit 1; }
-have() { command -v "$1" >/dev/null 2>&1; }
-is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
-is_linux()  { [[ "$(uname -s)" == "Linux" ]]; }
-arch() { uname -m; }
+usage() {
+  cat <<'USAGE'
+Usage:
+  update.sh --user <name> [--dir <path>] [--no-pull]
+
+Examples:
+  ~/.base-tooling/update.sh --user koni
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --user) USERNAME="${2:-}"; shift 2;;
+    --dir) INSTALL_DIR="${2:-}"; shift 2;;
+    --no-pull) NO_PULL="1"; shift;;
+    -h|--help) usage; exit 0;;
+    *) err "Unknown argument: $1";;
+  esac
+done
+
+[[ -n "$USERNAME" ]] || { usage; err "--user is required"; }
+if [[ -z "$INSTALL_DIR" ]]; then
+  INSTALL_DIR="$HOME/.base-tooling"
+fi
 
 require_sudo() {
-  if ! have sudo; then die "sudo is required."; fi
-  msg "Sudo privileges required. You may be prompted for your password."
+  command -v sudo >/dev/null 2>&1 || err "sudo is required"
   sudo -v
 }
 
-usage() {
-  cat <<EOF
-Usage:
-  $SCRIPT_NAME --user <name> [--dir <path>] [--darwin-target <name>] [--no-pull]
-
-Options:
-  --user            Username to configure (required)
-  --dir             Repo directory (default: ~/.base-tooling)
-  --darwin-target   nix-darwin flake target (default: default)
-  --no-pull         Do not git pull (useful if you have local changes)
-EOF
-}
-
-parse_args() {
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --user) USERNAME="${2:-}"; shift 2 ;;
-      --dir)  INSTALL_DIR="${2:-}"; shift 2 ;;
-      --darwin-target) DARWIN_TARGET="${2:-}"; shift 2 ;;
-      --no-pull) NO_PULL="1"; shift ;;
-      -h|--help) usage; exit 0 ;;
-      *) die "Unknown argument: $1" ;;
-    esac
-  done
-  [[ -n "$USERNAME" ]] || die "--user is required"
-  [[ -n "${INSTALL_DIR}" ]] || INSTALL_DIR="$HOME/.base-tooling"
-}
-
-ensure_linux_bash_nix_integration() {
-  is_linux || return 0
-
-  local profile="$HOME/.profile"
-  local bashrc="$HOME/.bashrc"
-  local marker_begin="# >>> base-tooling: nix init >>>"
-  local marker_end="# <<< base-tooling: nix init <<<"
-
-  local nix_sh=""
-  for cand in \
-    "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" \
-    "/etc/profile.d/nix.sh" \
-    "$HOME/.nix-profile/etc/profile.d/nix.sh"
-  do
-    if [[ -r "$cand" ]]; then nix_sh="$cand"; break; fi
-  done
-  if [[ -z "$nix_sh" ]]; then
-    warn "Could not find a nix profile script; skipping bash integration."
+source_nix_profile_if_needed() {
+  if command -v nix >/dev/null 2>&1; then
     return 0
   fi
-
-  local snippet
-  snippet="$marker_begin
-if [ -r \"$nix_sh\" ]; then
-  . \"$nix_sh\"
-fi
-$marker_end"
-
-  touch "$profile" "$bashrc"
-  for f in "$profile" "$bashrc"; do
-    if ! grep -Fq "$marker_begin" "$f"; then
-      printf "\n%s\n" "$snippet" >>"$f"
+  local candidates=(
+    "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
+    "/nix/var/nix/profiles/default/etc/profile.d/nix.sh"
+    "$HOME/.nix-profile/etc/profile.d/nix.sh"
+  )
+  for f in "${candidates[@]}"; do
+    if [[ -r "$f" ]]; then
+      # shellcheck disable=SC1090
+      . "$f"
+      break
     fi
   done
 }
 
-install_rancher_desktop_linux() {
-  is_linux || return 0
-  if have rancher-desktop || dpkg -s rancher-desktop >/dev/null 2>&1 || rpm -q rancher-desktop >/dev/null 2>&1; then
-    msg "Rancher Desktop already installed."
-    return 0
+ensure_git() {
+  command -v git >/dev/null 2>&1 && return 0
+  if is_darwin; then
+    err "git is required on macOS. Install Xcode CLT: xcode-select --install"
   fi
-  if [[ "$(arch)" != "x86_64" ]]; then
-    warn "Rancher Desktop packages are only available for Linux x86_64. Current arch: $(arch). Skipping."
-    return 0
-  fi
+  msg "Installing git..."
+  require_sudo
+  sudo apt-get update -y
+  sudo apt-get install -y git
+}
 
-  msg "Linux: Installing Rancher Desktop from upstream GitHub release (.deb/.rpm) if missing..."
+ensure_repo() {
+  msg "Ensuring repo is present at: $INSTALL_DIR"
+  if [[ -d "$INSTALL_DIR/.git" ]]; then
+    if [[ "$NO_PULL" == "1" ]]; then
+      msg "--no-pull set; skipping git pull."
+      return 0
+    fi
 
-  local api="https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest"
-  local cache="${XDG_CACHE_HOME:-$HOME/.cache}/base-tooling"
-  mkdir -p "$cache"
+    # If the user has local modifications, refuse by default.
+    if ! git -C "$INSTALL_DIR" diff --quiet || ! git -C "$INSTALL_DIR" diff --cached --quiet; then
+      err "Working tree has uncommitted changes in $INSTALL_DIR. Commit/stash them, or re-run with --no-pull."
+    fi
 
-  local url=""
-  if have apt-get; then
-    url="$(curl -fsSL "$api" | grep -Eo 'https://[^"]+\.deb' | grep -E '(amd64|x86_64)' | head -n1 || true)"
-    [[ -n "$url" ]] || die "Could not find a suitable .deb asset for Rancher Desktop (amd64)."
-    local deb="$cache/$(basename "$url")"
-    curl -fL --retry 3 --retry-delay 1 -o "$deb" "$url"
-    require_sudo
-    sudo dpkg -i "$deb" || sudo apt-get -y -f install
-  elif have rpm; then
-    url="$(curl -fsSL "$api" | grep -Eo 'https://[^"]+\.rpm' | grep -E '(x86_64)' | head -n1 || true)"
-    [[ -n "$url" ]] || die "Could not find a suitable .rpm asset for Rancher Desktop (x86_64)."
-    local rpmf="$cache/$(basename "$url")"
-    curl -fL --retry 3 --retry-delay 1 -o "$rpmf" "$url"
-    require_sudo
-    sudo rpm -Uvh --replacepkgs "$rpmf"
+    msg "Updating repo..."
+    git -C "$INSTALL_DIR" fetch --all --prune
+    git -C "$INSTALL_DIR" checkout -q main || true
+    git -C "$INSTALL_DIR" pull --ff-only
   else
-    warn "Neither apt-get nor rpm found; skipping Rancher Desktop install."
+    git clone "$REPO_URL" "$INSTALL_DIR"
   fi
 }
 
-fix_darwin_etc_nix_conf_conflict() {
-  is_darwin || return 0
-  if [[ -f /etc/nix/nix.conf ]] && [[ ! -f /etc/nix/nix.conf.before-nix-darwin ]]; then
-    msg "macOS: Detected /etc/nix/nix.conf which may block nix-darwin activation. Renaming to nix.conf.before-nix-darwin"
-    require_sudo
-    sudo mv /etc/nix/nix.conf /etc/nix/nix.conf.before-nix-darwin
+linux_install_rancher_desktop_repo() {
+  if command -v rancher-desktop >/dev/null 2>&1; then
+    msg "Rancher Desktop already installed."
+    return 0
+  fi
+
+  msg "Linux: Installing Rancher Desktop via official repository..."
+  require_sudo
+
+  sudo apt-get update -y
+  sudo apt-get install -y ca-certificates curl gnupg
+
+  sudo install -d -m 0755 /etc/apt/keyrings
+  if [[ ! -f /etc/apt/keyrings/rancher-desktop.gpg ]]; then
+    curl -fsSL https://download.opensuse.org/repositories/isv:/Rancher:/stable/deb/Release.key \
+      | sudo gpg --dearmor -o /etc/apt/keyrings/rancher-desktop.gpg
+    sudo chmod a+r /etc/apt/keyrings/rancher-desktop.gpg
+  fi
+
+  if [[ ! -f /etc/apt/sources.list.d/rancher-desktop.list ]]; then
+    echo "deb [signed-by=/etc/apt/keyrings/rancher-desktop.gpg] https://download.opensuse.org/repositories/isv:/Rancher:/stable/deb/ ./" \
+      | sudo tee /etc/apt/sources.list.d/rancher-desktop.list >/dev/null
+  fi
+
+  sudo apt-get update -y
+  sudo apt-get install -y rancher-desktop
+}
+
+linux_ensure_nix_on_path_for_bash() {
+  local nix_daemon_sh="/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
+  local nix_sh="/nix/var/nix/profiles/default/etc/profile.d/nix.sh"
+
+  if [[ ! -r "$nix_daemon_sh" && ! -r "$nix_sh" ]]; then
+    warn "Could not find Nix profile scripts under /nix/var/nix/profiles/default/etc/profile.d. PATH integration may not work."
+    return 0
+  fi
+
+  require_sudo
+
+  local sys_marker_begin="# >>> base-tooling nix env >>>"
+  local sys_marker_end="# <<< base-tooling nix env <<<"
+  if ! sudo grep -qF "$sys_marker_begin" /etc/bash.bashrc 2>/dev/null; then
+    sudo tee -a /etc/bash.bashrc >/dev/null <<EOF
+
+$sys_marker_begin
+if [ -r "$nix_daemon_sh" ]; then
+  . "$nix_daemon_sh"
+elif [ -r "$nix_sh" ]; then
+  . "$nix_sh"
+fi
+$sys_marker_end
+EOF
+  fi
+
+  local user_bashrc="$HOME/.bashrc"
+  local user_marker_begin="# >>> base-tooling nix env (user) >>>"
+  local user_marker_end="# <<< base-tooling nix env (user) <<<"
+
+  touch "$user_bashrc"
+  if ! grep -qF "$user_marker_begin" "$user_bashrc"; then
+    cat >> "$user_bashrc" <<EOF
+
+$user_marker_begin
+if [ -r "$nix_daemon_sh" ]; then
+  . "$nix_daemon_sh"
+elif [ -r "$nix_sh" ]; then
+  . "$nix_sh"
+fi
+
+if [ -r "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
+  . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
+fi
+
+if command -v direnv >/dev/null 2>&1; then
+  eval "$(direnv hook bash)"
+fi
+$user_marker_end
+EOF
   fi
 }
 
@@ -140,62 +185,47 @@ apply_configuration() {
   msg "Applying declarative configuration..."
   export BASE_TOOLING_USER="$USERNAME"
 
+  source_nix_profile_if_needed
+
   if is_darwin; then
     require_sudo
-    fix_darwin_etc_nix_conf_conflict
-
-    nix build --impure -L "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
-    sudo env BASE_TOOLING_USER="$USERNAME" ./result/sw/bin/darwin-rebuild switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+    nix build --impure "$INSTALL_DIR#darwinConfigurations.${DARWIN_TARGET}.system"
+    sudo env BASE_TOOLING_USER="$USERNAME" ./result/sw/bin/darwin-rebuild switch --impure --flake "$INSTALL_DIR#${DARWIN_TARGET}"
   else
-    ensure_linux_bash_nix_integration
-
     nix run github:nix-community/home-manager -- \
       switch \
-      -b before-hm \
       --impure \
-      --flake "${INSTALL_DIR}#${USERNAME}@linux"
+      --flake "$INSTALL_DIR#${USERNAME}@linux" \
+      -b before-hm
 
-    ensure_linux_bash_nix_integration
+    linux_ensure_nix_on_path_for_bash
+    linux_install_rancher_desktop_repo
   fi
-}
-
-update_repo() {
-  msg "Updating repo..."
-  [[ -d "$INSTALL_DIR/.git" ]] || die "Repo not found at $INSTALL_DIR. Run install first."
-
-  if [[ "$NO_PULL" == "1" ]]; then
-    msg "--no-pull set; skipping git pull."
-    return 0
-  fi
-
-  # Only block if there are tracked changes staged/unstaged.
-  # (Untracked files like a locally-generated flake.lock shouldn't stop updates.)
-  if ! git -C "$INSTALL_DIR" diff --quiet || ! git -C "$INSTALL_DIR" diff --cached --quiet; then
-    die "Working tree has uncommitted changes in $INSTALL_DIR. Commit/stash them, or re-run with --no-pull."
-  fi
-
-  git -C "$INSTALL_DIR" pull --ff-only
 }
 
 main() {
-  parse_args "$@"
-
   msg "Base tooling update (Day-2) starting..."
-  msg "Detected OS: $(uname -s) ($(arch))"
+
+  if is_darwin; then
+    msg "Detected OS: Darwin ($(arch))"
+  elif is_linux; then
+    msg "Detected OS: Linux ($(arch))"
+  else
+    err "Unsupported OS: $(uname -s)"
+  fi
+
   msg "Using user: $USERNAME"
   msg "Repo dir: $INSTALL_DIR"
 
-  have nix || die "Nix is not installed."
-
-  update_repo
-
-  if is_linux; then
-    install_rancher_desktop_linux
-  fi
+  ensure_git
+  ensure_repo
 
   apply_configuration
 
   msg "Done."
+  if is_linux; then
+    msg "Open a NEW terminal (or run: source ~/.bashrc) so PATH updates take effect."
+  fi
 }
 
 main "$@"
