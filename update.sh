@@ -108,7 +108,7 @@ install_rancher_linux() {
     return 0
   fi
 
-  msg "Installing Rancher Desktop (Linux)..."
+  msg "Linux: Installing Rancher Desktop from upstream release (.deb/.rpm)..."
 
   require_cmd curl
   require_sudo
@@ -123,32 +123,44 @@ install_rancher_linux() {
       ;;
   esac
 
-  TMP_DIR="$(mktemp -d)"
+  CACHE_DIR="${HOME}/.cache/base-tooling"
+  mkdir -p "${CACHE_DIR}"
 
-  # get latest tag
+  # Get latest release tag
   TAG="$(curl -fsSL https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest \
     | grep -m1 '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')"
+
+  if [ -z "$TAG" ]; then
+    echo "Failed to determine latest Rancher Desktop release."
+    exit 1
+  fi
 
   if command -v apt-get >/dev/null 2>&1; then
     FILE="rancher-desktop-${TAG#v}-linux-${ARCH}.deb"
     URL="https://github.com/rancher-sandbox/rancher-desktop/releases/download/${TAG}/${FILE}"
 
-    curl -L "$URL" -o "$TMP_DIR/$FILE"
-    sudo apt install -y "$TMP_DIR/$FILE"
+    msg "Downloading ${FILE}..."
+    curl -fL "$URL" -o "${CACHE_DIR}/${FILE}"
+
+    msg "Installing via apt..."
+    sudo apt install -y "${CACHE_DIR}/${FILE}"
 
   elif command -v dnf >/dev/null 2>&1; then
     FILE="rancher-desktop-${TAG#v}-linux-${ARCH}.rpm"
     URL="https://github.com/rancher-sandbox/rancher-desktop/releases/download/${TAG}/${FILE}"
 
-    curl -L "$URL" -o "$TMP_DIR/$FILE"
-    sudo dnf install -y "$TMP_DIR/$FILE"
+    msg "Downloading ${FILE}..."
+    curl -fL "$URL" -o "${CACHE_DIR}/${FILE}"
+
+    msg "Installing via dnf..."
+    sudo dnf install -y "${CACHE_DIR}/${FILE}"
 
   else
     echo "Unsupported package manager (only apt & dnf supported)."
     exit 1
   fi
 
-  msg "Rancher Desktop installed."
+  msg "Rancher Desktop installed successfully."
 }
 
 main() {
