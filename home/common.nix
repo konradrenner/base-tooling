@@ -37,7 +37,9 @@ in
     vscode
     netbeans
     curl
+    jq
     git
+    gh
     devenv
     graphviz
     plantuml
