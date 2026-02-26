@@ -61,42 +61,23 @@ ensure_nix() {
     return 0
   fi
 
-  msg "Installing Nix (Determinate Nix Installer) with build group GID 350..."
+  msg "Installing Nix (Determinate Nix Installer) with nixbld GID=350..."
 
-  if ! command -v curl >/dev/null 2>&1; then
-    err "curl is required to install Nix."
-    return 1
-  fi
+  require_sudo
 
-  # Determinate installer supports configuring the build group ID.
-  # We intentionally DO NOT use 30000 (commonly taken by fuse on Ubuntu).
-  #
-  # This MUST run with sudo (installer escalates if needed).
-  #
-  # Note: the exact env var name is what matters here. Determinate's installer
-  # reads it and uses it when creating the nixbld group/users.
-  export NIX_BUILD_GROUP_ID="350"
-
-  # Optional but helpful: make the install non-interactive if you're piping from curl
-  export DETERMINATE_NIX_INSTALLER_YES="1"
-
-  # Install
-  curl -fsSL https://install.determinate.systems/nix | sh -s -- install
-
-  # Load nix into current shell for the rest of the script (best-effort)
-  if [ -e "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" ]; then
-    # shellcheck disable=SC1091
-    . "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
-  elif [ -e "/nix/var/nix/profiles/default/etc/profile.d/nix.sh" ]; then
-    # shellcheck disable=SC1091
-    . "/nix/var/nix/profiles/default/etc/profile.d/nix.sh"
-  fi
-
-  if ! command -v nix >/dev/null 2>&1; then
-    err "Nix installation completed but 'nix' is still not on PATH in this shell."
-    err "Open a new terminal and re-run the script."
-    return 1
-  fi
+  # Run installer as root (Determinate escalates), but we pass the settings explicitly.
+  # - --determinate: install Determinate Nix
+  # - --nix-build-group-id 350: avoid collision with existing GID 30000 (your fuse group)
+  # - --no-modify-profile: don't touch /etc/bash.bashrc etc.
+  # - --no-confirm: non-interactive
+  curl -fsSL https://install.determinate.systems/nix \
+    | sudo env \
+        NIX_INSTALLER_NIX_BUILD_GROUP_ID=350 \
+      sh -s -- install linux \
+        --determinate \
+        --nix-build-group-id 350 \
+        --no-modify-profile \
+        --no-confirm
 }
 
 ensure_flakes() {
