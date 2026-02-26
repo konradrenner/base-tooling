@@ -47,6 +47,5 @@ in
     spotify
     quarkus
     jbang
-    gimp
   ];
 }

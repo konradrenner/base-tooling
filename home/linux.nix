@@ -42,6 +42,7 @@
   home.packages = with pkgs; [
     vscode-runner
     vlc
+    gimp
   ];
 
   home.sessionVariables = {
