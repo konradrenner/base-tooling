@@ -1,229 +1,176 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# base-tooling install (Day-0)
-# - clones/updates the repo into ~/.base-tooling (or $BASE_TOOLING_DIR)
-# - applies declarative config via nix-darwin (macOS) or Home Manager (Linux)
-# - keeps bash installed; on Linux we switch *your user* to zsh (system /usr/bin/zsh)
-
 msg() { printf "\n==> %s\n" "$*"; }
-warn() { printf "\nWARN: %s\n" "$*" >&2; }
-die() { printf "\nERROR: %s\n" "$*" >&2; exit 1; }
-
-is_darwin() { [ "$(uname -s)" = "Darwin" ]; }
-is_linux()  { [ "$(uname -s)" = "Linux" ]; }
-
-need_cmd() { command -v "$1" >/dev/null 2>&1 || die "Missing command: $1"; }
-
-require_sudo() {
-  if sudo -n true 2>/dev/null; then
-    return
-  fi
-  msg "Sudo privileges required. You may be prompted for your password."
-  sudo true
-}
-
-usage() {
-  cat <<'EOF'
-Usage: install.sh --user <name> [--dir <path>]
-
-Options:
-  --user <name>   Username used inside the flake (BASE_TOOLING_USER)
-  --dir  <path>   Install directory (default: ~/.base-tooling)
-EOF
-}
+err() { printf "\nERROR: %s\n" "$*" >&2; exit 1; }
 
 USERNAME=""
-INSTALL_DIR="${BASE_TOOLING_DIR:-$HOME/.base-tooling}"
+INSTALL_DIR="${HOME}/.base-tooling"
+REPO_URL="https://github.com/konradrenner/base-tooling.git"
+NO_PULL="false"
+DARWIN_TARGET="default"
 
-while [ "${1:-}" != "" ]; do
+usage() {
+  cat <<'USAGE'
+Usage:
+  install.sh --user <name> [--dir <path>] [--no-pull] [--darwin-target <name>]
+
+Notes:
+- Linux uses Home Manager standalone via: nix run github:nix-community/home-manager -- switch ...
+- macOS uses nix-darwin flake output.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
   case "$1" in
-    --user) USERNAME="${2:-}"; shift 2;;
-    --dir)  INSTALL_DIR="${2:-}"; shift 2;;
-    -h|--help) usage; exit 0;;
-    *) die "Unknown argument: $1";;
+    --user) USERNAME="${2:-}"; shift 2 ;;
+    --dir) INSTALL_DIR="${2:-}"; shift 2 ;;
+    --no-pull) NO_PULL="true"; shift ;;
+    --darwin-target) DARWIN_TARGET="${2:-}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) err "Unknown argument: $1" ;;
   esac
 done
 
-[ -n "$USERNAME" ] || { usage; die "--user is required"; }
+[[ -n "$USERNAME" ]] || err "Missing --user <name>"
 
-detect_arch() { uname -m; }
-detect_os() {
-  if is_darwin; then echo "Darwin"; else echo "Linux"; fi
-}
+is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
+is_linux() { [[ "$(uname -s)" == "Linux" ]]; }
 
-ensure_nix() {
-  if command -v nix >/dev/null 2>&1; then
-    msg "Nix already installed."
-    return
-  fi
-  die "Nix is not installed. Install Nix first, then re-run this script."
-}
+require_cmd() { command -v "$1" >/dev/null 2>&1 || return 1; }
 
-enable_flakes() {
-  msg "Enabling nix-command + flakes (idempotent)."
-  # Best-effort; different installs manage this differently.
-  mkdir -p "$HOME/.config/nix"
-  local conf="$HOME/.config/nix/nix.conf"
-  touch "$conf"
-  if ! grep -q '^experimental-features *=.*nix-command' "$conf" 2>/dev/null; then
-    printf "\nexperimental-features = nix-command flakes\n" >> "$conf"
-  fi
+ensure_sudo() {
+  msg "Sudo privileges required. You may be prompted for your password."
+  sudo -v
 }
 
 ensure_git() {
-  if command -v git >/dev/null 2>&1; then
-    msg "git already installed."
-    return
-  fi
+  if require_cmd git; then return; fi
   if is_darwin; then
-    die "git missing. Install Xcode Command Line Tools first (xcode-select --install)."
+    msg "git missing on macOS. Install Xcode Command Line Tools (xcode-select --install) and re-run."
+    exit 1
   fi
   msg "Installing git (apt)..."
-  require_sudo
   sudo apt-get update -y
   sudo apt-get install -y git
 }
 
+ensure_nix() {
+  if require_cmd nix; then
+    msg "Nix already installed."
+    return
+  fi
+
+  msg "Installing Nix (Determinate Nix Installer)..."
+  # Determinate installer provides uninstall via /nix/nix-installer uninstall
+  curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install
+
+  # Load nix into current shell (best-effort)
+  if [[ -e "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" ]]; then
+    # shellcheck disable=SC1091
+    . "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
+  elif [[ -e "${HOME}/.nix-profile/etc/profile.d/nix.sh" ]]; then
+    # shellcheck disable=SC1091
+    . "${HOME}/.nix-profile/etc/profile.d/nix.sh"
+  fi
+
+  require_cmd nix || err "Nix install finished but 'nix' not found in PATH in this shell. Open a new terminal and re-run."
+}
+
+ensure_flakes() {
+  msg "Enabling nix-command + flakes (idempotent)."
+  mkdir -p "${HOME}/.config/nix"
+  local conf="${HOME}/.config/nix/nix.conf"
+  touch "$conf"
+  if ! grep -q '^experimental-features *=.*nix-command' "$conf"; then
+    printf "\nexperimental-features = nix-command flakes\n" >> "$conf"
+  fi
+}
+
 ensure_repo() {
-  msg "Ensuring repo is present at: $INSTALL_DIR"
-  if [ -d "$INSTALL_DIR/.git" ]; then
-    msg "Repo already cloned. Fetching latest..."
-    git -C "$INSTALL_DIR" fetch --prune origin
-    git -C "$INSTALL_DIR" reset --hard origin/main
+  msg "Ensuring repo is present at: ${INSTALL_DIR}"
+  if [[ -d "${INSTALL_DIR}/.git" ]]; then
+    if [[ "$NO_PULL" == "true" ]]; then
+      msg "Repo already present. --no-pull set, skipping git pull."
+    else
+      msg "Repo already cloned. Fetching latest..."
+      git -C "$INSTALL_DIR" pull --ff-only
+    fi
   else
-    mkdir -p "$(dirname "$INSTALL_DIR")"
-    git clone https://github.com/konradrenner/base-tooling "$INSTALL_DIR"
+    ensure_git
+    git clone "$REPO_URL" "$INSTALL_DIR"
   fi
 }
 
-# Nix 2.29 removed `nix profile add` (renamed to `nix profile install`).
-# Some Home Manager code paths still call `nix profile add`, so we install a tiny wrapper
-# earlier in PATH that translates "profile add" -> "profile install".
-ensure_nix_profile_add_wrapper() {
-  if ! is_linux; then
-    return
-  fi
-
-  # If it already works, do nothing.
-  if nix profile add --help >/dev/null 2>&1; then
-    return
-  fi
-
-  msg "Linux: Installing Nix compatibility wrapper for 'nix profile add' (idempotent)."
-  mkdir -p "$HOME/.local/bin"
-
-  local real_nix=""
-  if [ -x /nix/var/nix/profiles/default/bin/nix ]; then
-    real_nix="/nix/var/nix/profiles/default/bin/nix"
-  elif [ -x "$HOME/.nix-profile/bin/nix" ]; then
-    real_nix="$HOME/.nix-profile/bin/nix"
-  else
-    real_nix="$(command -v nix || true)"
-  fi
-  [ -n "$real_nix" ] && [ -x "$real_nix" ] || die "Could not find a working nix binary."
-
-  cat > "$HOME/.local/bin/nix" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-REAL_NIX="${real_nix}"
-
-if [ "\${#}" -ge 2 ] && [ "\${1}" = "profile" ] && [ "\${2}" = "add" ]; then
-  shift 2
-  exec "\$REAL_NIX" profile install "\$@"
-fi
-
-exec "\$REAL_NIX" "\$@"
-EOF
-  chmod +x "$HOME/.local/bin/nix"
-  export PATH="$HOME/.local/bin:$PATH"
-}
-
-ensure_home_manager_cli() {
-  if command -v home-manager >/dev/null 2>&1; then
-    return
-  fi
-  msg "Ensuring home-manager CLI is installed (nix profile install)."
-  ensure_nix_profile_add_wrapper
-  nix profile install \
-    --extra-experimental-features nix-command \
-    --extra-experimental-features flakes \
-    github:nix-community/home-manager
-}
-
-ensure_linux_zsh_system() {
+ensure_linux_zsh_default() {
+  # You want zsh as default on Linux for your user, but bash must remain.
+  # IMPORTANT: chsh must point to a system shell listed in /etc/shells (NOT a nix store path).
   if ! is_linux; then return; fi
-  if [ -x /usr/bin/zsh ]; then return; fi
-  msg "Linux: Installing system zsh (apt)..."
-  require_sudo
-  sudo apt-get update -y
-  sudo apt-get install -y zsh
-}
 
-set_default_shell_zsh() {
-  if ! is_linux; then return; fi
-  ensure_linux_zsh_system
+  msg "Linux: ensuring zsh is installed and set as login shell for user '${USERNAME}' (bash remains installed)."
 
-  # Make sure /usr/bin/zsh is allowed
-  if ! grep -q '^/usr/bin/zsh$' /etc/shells 2>/dev/null; then
-    require_sudo
-    echo "/usr/bin/zsh" | sudo tee -a /etc/shells >/dev/null
+  if ! require_cmd zsh; then
+    if require_cmd apt-get; then
+      sudo apt-get update -y
+      sudo apt-get install -y zsh
+    else
+      msg "Linux: zsh missing and no apt-get found. Please install zsh manually, then re-run."
+      return
+    fi
   fi
 
-  local current_shell
-  current_shell="$(getent passwd "$USERNAME" | cut -d: -f7 || true)"
-  if [ "$current_shell" = "/usr/bin/zsh" ]; then
-    return
+  local target_shell="/usr/bin/zsh"
+  if [[ ! -x "$target_shell" ]]; then
+    # fallback
+    target_shell="$(command -v zsh)"
   fi
 
-  msg "Linux: Setting default shell for '$USERNAME' to /usr/bin/zsh"
-  require_sudo
-  sudo chsh -s /usr/bin/zsh "$USERNAME" || warn "Could not change shell automatically. Run: chsh -s /usr/bin/zsh"
+  if [[ -x "$target_shell" ]]; then
+    # Only change if it's not already set
+    if [[ "${SHELL:-}" != "$target_shell" ]]; then
+      # Requires password; changes only for this user
+      chsh -s "$target_shell" "$USER" || true
+    fi
+  fi
 }
 
 apply_configuration() {
   msg "Applying declarative configuration..."
-  export BASE_TOOLING_USER="$USERNAME"
+  export BASE_TOOLING_USER="${USERNAME}"
 
   if is_darwin; then
-    require_sudo
-    nix build --impure "${INSTALL_DIR}#darwinConfigurations.default.system"
-    sudo ./result/sw/bin/darwin-rebuild switch --impure --flake "${INSTALL_DIR}#default"
-  else
-    ensure_nix_profile_add_wrapper
-    ensure_home_manager_cli
+    ensure_sudo
 
-    msg "Starting Home Manager activation"
-    # -b backs up existing dotfiles automatically (prevents 'would be clobbered').
-    nix run \
-      --extra-experimental-features nix-command \
-      --extra-experimental-features flakes \
-      github:nix-community/home-manager -- \
+    # Build to an explicit output path so "result" doesn't confuse people / collide
+    local out="/tmp/base-tooling-darwin-system"
+    rm -f "$out" 2>/dev/null || true
+
+    nix build --impure -L -o "$out" "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
+    sudo "$out/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+
+  elif is_linux; then
+    # No installing home-manager CLI into a profile; just run it.
+    nix run github:nix-community/home-manager -- \
       switch \
-      -b before-hm \
       --impure \
       --flake "${INSTALL_DIR}#${USERNAME}@linux"
-
-    set_default_shell_zsh
+  else
+    err "Unsupported OS: $(uname -s)"
   fi
 }
 
-main() {
-  msg "Base tooling install (Day-0) starting..."
-  msg "Detected OS: $(detect_os) ($(detect_arch))"
-  msg "Using user: $USERNAME"
-  msg "Repo dir: $INSTALL_DIR"
+msg "Base tooling install (Day-0) starting..."
+msg "Using user: ${USERNAME}"
+msg "Repo dir: ${INSTALL_DIR}"
 
-  ensure_nix
-  enable_flakes
-  ensure_git
-  ensure_repo
-  apply_configuration
+if is_darwin; then msg "Detected OS: Darwin ($(uname -m))"; fi
+if is_linux; then msg "Detected OS: Linux ($(uname -m))"; fi
 
-  msg "Done."
-  if is_linux; then
-    msg "Open a NEW terminal so your login shell change (zsh) takes effect."
-  fi
-}
+ensure_nix
+ensure_flakes
+ensure_repo
+apply_configuration
+ensure_linux_zsh_default
 
-main "$@"
+msg "Done."
+msg "Open a NEW terminal so your login shell/env is refreshed."
