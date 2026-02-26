@@ -1,5 +1,18 @@
 { config, pkgs, ... }:
 
+let
+  vscodeWayland = pkgs.symlinkJoin {
+    name = "vscode-wayland";
+    paths = [ pkgs.vscode ];
+    buildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      wrapProgram "$out/bin/code" \
+        --add-flags "--disable-setuid-sandbox" \
+        --add-flags "--enable-features=UseOzonePlatform" \
+        --add-flags "--ozone-platform=wayland"
+    '';
+  };
+in
 {
   programs.zsh = {
     enable = true;
@@ -30,6 +43,16 @@
         source <(quarkus completion zsh)
       fi
     '';
+  };
+
+  programs.vscode = {
+    enable = true;
+    package = vscodeWayland;
+  };
+
+  # optional, aber oft sinnvoll auf Wayland:
+  home.sessionVariables = {
+    ELECTRON_OZONE_PLATFORM_HINT = "wayland";
   };
 
   programs.direnv = {
