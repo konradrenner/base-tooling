@@ -79,7 +79,7 @@ apply_configuration() {
     ensure_home_manager_cli
     ensure_linux_zsh
 
-    msg "Linux: Open a NEW terminal (or run: source ~/.bashrc) so PATH updates take effect."
+    msg "Linux: Open a NEW terminal so PATH updates take effect."
   fi
 }
 
