@@ -1,162 +1,145 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# base-tooling update (Day-2)
-# Usage:
-#   ~/.base-tooling/update.sh --user <name> [--no-pull]
-
-msg() { printf '\n==> %s\n' "$*"; }
-warn() { printf '\nWARN: %s\n' "$*" >&2; }
-die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
+msg() { echo -e "\n==> $*"; }
+warn() { echo -e "WARN: $*" >&2; }
+die() { echo -e "ERROR: $*" >&2; exit 1; }
 
 have() { command -v "$1" >/dev/null 2>&1; }
-
-require_sudo() {
-  if have sudo; then
-    msg "Sudo privileges required. You may be prompted for your password."
-    sudo -v
-  else
-    die "sudo is required but not found."
-  fi
-}
-
 is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
-is_linux() { [[ "$(uname -s)" == "Linux" ]]; }
+is_linux()  { [[ "$(uname -s)" == "Linux"  ]]; }
 
-arch() {
-  local a
-  a="$(uname -m)"
-  case "$a" in
-    x86_64|amd64) echo "x86_64";;
-    aarch64|arm64) echo "aarch64";;
-    *) echo "$a";;
-  esac
-}
+require_sudo() { msg "Sudo privileges required. You may be prompted for your password."; sudo -v; }
 
-user_home() {
-  local u="$1"
-  if is_darwin; then
-    dscl . -read "/Users/$u" NFSHomeDirectory 2>/dev/null | awk '{print $2}' || true
-  else
-    getent passwd "$u" 2>/dev/null | cut -d: -f6 || true
-  fi
-}
+usage() {
+  cat <<'EOF'
+Usage:
+  update.sh --user <name> [--dir <path>] [--no-pull]
 
-source_nix_profile_if_needed() {
-  if have nix; then return 0; fi
-  if [[ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]]; then
-    # shellcheck disable=SC1091
-    . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
-  elif [[ -e /nix/var/nix/profiles/default/etc/profile.d/nix.sh ]]; then
-    # shellcheck disable=SC1091
-    . /nix/var/nix/profiles/default/etc/profile.d/nix.sh
-  fi
-  if [[ -e "$HOME/.nix-profile/etc/profile.d/nix.sh" ]]; then
-    # shellcheck disable=SC1091
-    . "$HOME/.nix-profile/etc/profile.d/nix.sh"
-  fi
+EOF
 }
 
 USERNAME=""
-NO_PULL=0
-DARWIN_TARGET="default"
+INSTALL_DIR=""
+NO_PULL="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --user) USERNAME="${2:-}"; shift 2;;
-    --no-pull) NO_PULL=1; shift;;
-    --darwin-target) DARWIN_TARGET="${2:-default}"; shift 2;;
-    -h|--help)
-      cat <<EOF
-Usage: update.sh --user <name> [--no-pull] [--darwin-target default]
-EOF
-      exit 0
-      ;;
-    *) die "Unknown argument: $1";;
+    --user) USERNAME="${2:-}"; shift 2 ;;
+    --dir) INSTALL_DIR="${2:-}"; shift 2 ;;
+    --no-pull) NO_PULL="true"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "Unknown argument: $1" ;;
   esac
 done
 
-[[ -n "$USERNAME" ]] || die "Missing --user <name>"
+[[ -n "$USERNAME" ]] || { usage; die "--user is required"; }
 
-OS="$(uname -s)"
-ARCH="$(arch)"
+if [[ -z "$INSTALL_DIR" ]]; then
+  if is_darwin; then
+    INSTALL_DIR="/Users/${USERNAME}/.base-tooling"
+  else
+    if have getent && getent passwd "$USERNAME" >/dev/null 2>&1; then
+      INSTALL_DIR="$(getent passwd "$USERNAME" | cut -d: -f6)/.base-tooling"
+    else
+      INSTALL_DIR="$HOME/.base-tooling"
+      warn "User '$USERNAME' not found via getent; using INSTALL_DIR=$INSTALL_DIR"
+    fi
+  fi
+fi
 
 msg "Base tooling update (Day-2) starting..."
-msg "Detected OS: ${OS} (${ARCH})"
+msg "Detected OS: $(uname -s) ($(uname -m))"
 msg "Using user: ${USERNAME}"
-
-HOME_DIR="$(user_home "$USERNAME")"
-[[ -n "$HOME_DIR" ]] || die "Could not determine home directory for user '$USERNAME'"
-
-INSTALL_DIR="${HOME_DIR}/.base-tooling"
 msg "Repo dir: ${INSTALL_DIR}"
 
-[[ -d "$INSTALL_DIR/.git" ]] || die "Repo not found at ${INSTALL_DIR}. Run install.sh first."
+[[ -d "${INSTALL_DIR}/.git" ]] || die "Repo not found at ${INSTALL_DIR}. Run install first."
 
-msg "Updating repo..."
-if [[ "$NO_PULL" -eq 0 ]]; then
-  if [[ -n "$(git -C "$INSTALL_DIR" status --porcelain)" ]]; then
-    die "Working tree has uncommitted changes in ${INSTALL_DIR}. Commit/stash them, or re-run with --no-pull."
+update_repo() {
+  msg "Updating repo..."
+
+  if [[ "$NO_PULL" == "true" ]]; then
+    msg "Skipping git pull (--no-pull)."
+    return 0
   fi
+
+  # Allow "dirty" working tree if ONLY flake.lock or result/ changed.
+  local dirty
+  dirty="$(git -C "$INSTALL_DIR" status --porcelain \
+    | awk '{print $2}' \
+    | grep -vE '^(flake\.lock|result/|result$)$' || true)"
+
+  if [[ -n "$dirty" ]]; then
+    die "Working tree has uncommitted changes in ${INSTALL_DIR} (excluding flake.lock/result). Commit/stash them, or re-run with --no-pull."
+  fi
+
   git -C "$INSTALL_DIR" pull --ff-only
-else
-  msg "--no-pull set; skipping git pull."
-fi
+  msg "Current branch $(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD) is up to date."
+}
 
-msg "Applying declarative configuration..."
-export BASE_TOOLING_USER="$USERNAME"
+apply_configuration() {
+  msg "Applying declarative configuration..."
+  export BASE_TOOLING_USER="${USERNAME}"
 
-source_nix_profile_if_needed
-have nix || die "nix is not in PATH for this shell. Open a new terminal or ensure nix-daemon profile is sourced."
+  if is_darwin; then
+    require_sudo
+    nix build --impure -o "${INSTALL_DIR}/result" "${INSTALL_DIR}#darwinConfigurations.default.system"
+    sudo --preserve-env=BASE_TOOLING_USER "${INSTALL_DIR}/result/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#default"
+  else
+# Home Manager (sometimes) calls `nix profile add ...`. Newer Nix uses `nix profile install`.
 
-if is_darwin; then
-  require_sudo
-  nix build --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system" -L
-  sudo "${INSTALL_DIR}/result/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
-else
-  nix run github:nix-community/home-manager -- \
-    switch \
-    --impure \
-    --flake "${INSTALL_DIR}#${USERNAME}@linux"
+# If `add` is missing, provide a tiny shim `nix` for this run so activation doesn't fail.
 
-  # Ensure `home-manager` command is always available.
-  local_bin="${HOME_DIR}/.local/bin"
-  mkdir -p "$local_bin"
-  cat > "$local_bin/home-manager" <<'EOF'
+local _nix_shim_dir=""
+
+if ! nix profile add --help >/dev/null 2>&1; then
+
+  if nix profile install --help >/dev/null 2>&1; then
+
+    msg "Linux: Enabling Nix 'profile add' compatibility shim for this run."
+
+    _nix_shim_dir="$(mktemp -d)"
+
+    local _real_nix
+
+    _real_nix="$(command -v nix)"
+
+    cat >"$_nix_shim_dir/nix" <<EOF
+
 #!/usr/bin/env bash
+
 set -euo pipefail
-if ! command -v nix >/dev/null 2>&1; then
-  if [[ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]]; then
-    # shellcheck disable=SC1091
-    . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
-  elif [[ -e /nix/var/nix/profiles/default/etc/profile.d/nix.sh ]]; then
-    # shellcheck disable=SC1091
-    . /nix/var/nix/profiles/default/etc/profile.d/nix.sh
-  elif [[ -e "$HOME/.nix-profile/etc/profile.d/nix.sh" ]]; then
-    # shellcheck disable=SC1091
-    . "$HOME/.nix-profile/etc/profile.d/nix.sh"
-  fi
-fi
-exec nix run github:nix-community/home-manager -- "$@"
-EOF
-  chmod +x "$local_bin/home-manager"
 
-  prof="${HOME_DIR}/.profile"
-  touch "$prof"
-  if ! grep -q 'base-tooling:localbin' "$prof"; then
-    cat >> "$prof" <<'EOF'
+REAL_NIX="{_real_nix}"
 
-# base-tooling:localbin (ensure ~/.local/bin on PATH)
-if [ -d "$HOME/.local/bin" ]; then
-  case ":$PATH:" in
-    *":$HOME/.local/bin:"*) ;;
-    *) PATH="$HOME/.local/bin:$PATH" ;;
-  esac
+if [[ "${1- }" == "profile" && "${2- }" == "add" ]]; then
+
+  shift 2
+
+  exec "${REAL_NIX}" profile install "$@"
+
 fi
+
+exec "${REAL_NIX}" "$@"
+
 EOF
+
+    chmod +x "$_nix_shim_dir/nix"
+
+    export PATH="$_nix_shim_dir:$PATH"
+
   fi
 
-  msg "Linux: ensured 'home-manager' command via ~/.local/bin/home-manager"
 fi
 
+
+    nix run github:nix-community/home-manager -- \
+      switch -b backup \
+      --impure \
+      --flake "${INSTALL_DIR}#${USERNAME}@linux"
+  fi
+}
+
+update_repo
+apply_configuration
 msg "Done."
