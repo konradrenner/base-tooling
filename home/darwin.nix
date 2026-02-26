@@ -12,19 +12,19 @@
     dotDir = config.home.homeDirectory;
 
     initContent = ''
-      setopt HIST_IGNORE_ALL_DUPS
-      setopt HIST_REDUCE_BLANKS
-      setopt SHARE_HISTORY
-      setopt INC_APPEND_HISTORY
+      # Enable vcs_info
+      autoload -Uz vcs_info
+      precmd() { vcs_info }
 
-      export EDITOR=''${EDITOR:-code}
+      # Configure git format
+      zstyle ':vcs_info:git:*' formats ' (%b%u%c)'
+      zstyle ':vcs_info:git:*' actionformats ' (%b|%a%u%c)'
+      zstyle ':vcs_info:git:*' stagedstr '+'
+      zstyle ':vcs_info:git:*' unstagedstr '*'
 
-      autoload -Uz colors && colors
-
-      PROMPT='%F{green}%n@%m%f:%F{blue}%~%f%(#.#.$) '
-
-      zstyle ':completion:*' menu select
-      zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
+      # Prompt
+      setopt PROMPT_SUBST
+      PROMPT='%F{green}%n@%m%f:%F{blue}%~%f%F{yellow}${vcs_info_msg_0_}%f%(!.#.$) '
     '';
   };
 
