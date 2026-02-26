@@ -26,21 +26,13 @@
       setopt PROMPT_SUBST
       PROMPT='%F{green}%n@%m%f:%F{blue}%~%f%F{yellow}$vcs_info_msg_0_%f%(!.#.$) '
 
-      # --- Quarkus CLI completion (zsh) ---
+      # ---- Quarkus CLI completion----
       if command -v quarkus >/dev/null 2>&1; then
-        _q_cache_dir="''${XDG_CACHE_HOME:-$HOME/.cache}"
-        mkdir -p "$_q_cache_dir"
-        _q_comp_file="$_q_cache_dir/quarkus-completion.zsh"
+        autoload -Uz bashcompinit
+        bashcompinit
 
-        if [ ! -s "$_q_comp_file" ]; then
-          _q_out="$(quarkus completion 2>/dev/null || true)"
-          if printf '%s\n' "$_q_out" | head -n1 | grep -q '^#compdef'; then
-            printf '%s\n' "$_q_out" > "$_q_comp_file"
-          fi
-        fi
-
-        [ -s "$_q_comp_file" ] && source "$_q_comp_file"
-        unset _q_cache_dir _q_comp_file _q_out
+        # Quarkus completion sometimes emits extra output -> keep it quiet
+        source <(quarkus completion 2>/dev/null)
       fi
     '';
   };
