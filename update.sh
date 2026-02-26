@@ -116,6 +116,7 @@ apply_configuration() {
   elif is_linux; then
     nix run github:nix-community/home-manager -- \
       switch \
+      -b backup \
       --impure \
       --flake "${INSTALL_DIR}#${USERNAME}@linux"
   else

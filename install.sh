@@ -77,8 +77,8 @@ ensure_nix() {
         --nix-build-group-id 350 \
         --no-modify-profile \
         --no-confirm
-  # make nix available for the remainder of THIS script run
-  if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+  # Make nix available in THIS shell right now (important for non-interactive install via curl|bash)
+  if [ -f /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
     . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
   fi
 }
@@ -185,6 +185,7 @@ apply_configuration() {
     # No installing home-manager CLI into a profile; just run it.
     nix run github:nix-community/home-manager -- \
       switch \
+      -b backup \
       --impure \
       --flake "${INSTALL_DIR}#${USERNAME}@linux"
   else
