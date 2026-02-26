@@ -1,145 +1,200 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-msg() { echo -e "\n==> $*"; }
-warn() { echo -e "WARN: $*" >&2; }
-die() { echo -e "ERROR: $*" >&2; exit 1; }
+# base-tooling update (Day-2)
+
+msg() { printf '\n==> %s\n' "$*"; }
+warn() { printf '\nWARN: %s\n' "$*"; }
+die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 
 have() { command -v "$1" >/dev/null 2>&1; }
 is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
-is_linux()  { [[ "$(uname -s)" == "Linux"  ]]; }
 
-require_sudo() { msg "Sudo privileges required. You may be prompted for your password."; sudo -v; }
-
-usage() {
-  cat <<'EOF'
-Usage:
-  update.sh --user <name> [--dir <path>] [--no-pull]
-
-EOF
+require_sudo() {
+  if [[ ${EUID:-0} -ne 0 ]]; then
+    msg "Sudo privileges required. You may be prompted for your password."
+    sudo -v
+  fi
 }
 
+# Load Nix into PATH for non-login shells.
+source_nix_profile() {
+  # Multi-user daemon install
+  if [[ -r /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]]; then
+    # shellcheck disable=SC1091
+    . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+  fi
+  # Single-user
+  if [[ -r "$HOME/.nix-profile/etc/profile.d/nix.sh" ]]; then
+    # shellcheck disable=SC1091
+    . "$HOME/.nix-profile/etc/profile.d/nix.sh"
+  fi
+  # Some distros
+  if [[ -r /etc/profile.d/nix.sh ]]; then
+    # shellcheck disable=SC1091
+    . /etc/profile.d/nix.sh
+  fi
+}
+
+ensure_nix_available() {
+  source_nix_profile
+  if have nix; then return; fi
+  for p in /nix/var/nix/profiles/default/bin/nix "$HOME/.nix-profile/bin/nix"; do
+    if [[ -x "$p" ]]; then
+      export PATH="$(dirname "$p"):$PATH"
+      return
+    fi
+  done
+  die "Nix not found in PATH. Install Nix first, then re-run."
+}
+
+# Nix 2.29 dropped `nix profile add`. Home Manager (depending on version)
+# may still call it. This shim translates `nix profile add` -> `nix profile install`.
+with_nix_profile_add_shim() {
+  ensure_nix_available
+
+  local real_nix
+  real_nix="$(command -v nix)"
+  [[ -n "$real_nix" && -x "$real_nix" ]] || die "Could not locate real nix binary."
+
+  local tmp
+  tmp="$(mktemp -d 2>/dev/null || mktemp -d -t base-tooling-nixshim)"
+
+  cat >"$tmp/nix" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+REAL_NIX="__REAL_NIX__"
+
+if [[ "${1:-}" == "profile" && "${2:-}" == "add" ]]; then
+  shift 2
+  exec "$REAL_NIX" profile install "$@"
+fi
+
+exec "$REAL_NIX" "$@"
+EOF
+
+  # inject real nix path
+  perl -0777 -i -pe "s#__REAL_NIX__#${real_nix}#g" "$tmp/nix" 2>/dev/null || \
+    sed -i "s#__REAL_NIX__#${real_nix}#g" "$tmp/nix"
+
+  chmod +x "$tmp/nix"
+
+  PATH="$tmp:$PATH" "$@"
+
+  rm -rf "$tmp" >/dev/null 2>&1 || true
+}
+
+ensure_shell_integration_linux() {
+  msg "Linux: Ensuring shells load Nix + Home Manager environment (idempotent)."
+  ensure_nix_available
+
+  local block
+  block=$(cat <<'EOF'
+# >>> base-tooling:env >>>
+# Nix (daemon) environment
+if [ -r /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+  . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+elif [ -r "$HOME/.nix-profile/etc/profile.d/nix.sh" ]; then
+  . "$HOME/.nix-profile/etc/profile.d/nix.sh"
+fi
+
+# Home Manager session variables (standalone HM creates this in the user profile)
+if [ -r "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
+  . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
+fi
+# <<< base-tooling:env <<<
+EOF
+)
+
+  local bashrc="$HOME/.bashrc"; touch "$bashrc"
+  if ! grep -q "^# >>> base-tooling:env >>>" "$bashrc" 2>/dev/null; then
+    printf '\n%s\n' "$block" >> "$bashrc"
+  fi
+
+  local profile="$HOME/.profile"; touch "$profile"
+  if ! grep -q "^# >>> base-tooling:env >>>" "$profile" 2>/dev/null; then
+    printf '\n%s\n' "$block" >> "$profile"
+  fi
+
+  local zprofile="$HOME/.zprofile"; touch "$zprofile"
+  if ! grep -q "^# >>> base-tooling:zprofile >>>" "$zprofile" 2>/dev/null; then
+    cat >>"$zprofile" <<'EOF'
+# >>> base-tooling:zprofile >>>
+# Load the same environment for zsh login shells
+[ -r "$HOME/.profile" ] && . "$HOME/.profile"
+# <<< base-tooling:zprofile <<<
+EOF
+  fi
+}
+
+apply_configuration() {
+  local install_dir="$1"
+  local username="$2"
+
+  msg "Applying declarative configuration..."
+  export BASE_TOOLING_USER="$username"
+
+  ensure_nix_available
+
+  if is_darwin; then
+    require_sudo
+    nix build --impure "${install_dir}#darwinConfigurations.default.system" -L
+    sudo BASE_TOOLING_USER="$username" ./result/sw/bin/darwin-rebuild switch --impure --flake "${install_dir}#default"
+  else
+    msg "Starting Home Manager activation"
+
+    # Run HM with the nix shim in PATH so `nix profile add` keeps working.
+    with_nix_profile_add_shim \
+      nix run github:nix-community/home-manager -- \
+        switch \
+        -b before-hm \
+        --impure \
+        --flake "${install_dir}#${username}@linux"
+
+    ensure_shell_integration_linux
+  fi
+}
+
+# -------------------- args --------------------
 USERNAME=""
-INSTALL_DIR=""
-NO_PULL="false"
+INSTALL_DIR="$HOME/.base-tooling"
+NO_PULL=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --user) USERNAME="${2:-}"; shift 2 ;;
     --dir) INSTALL_DIR="${2:-}"; shift 2 ;;
-    --no-pull) NO_PULL="true"; shift ;;
-    -h|--help) usage; exit 0 ;;
+    --no-pull) NO_PULL=1; shift ;;
     *) die "Unknown argument: $1" ;;
   esac
 done
 
-[[ -n "$USERNAME" ]] || { usage; die "--user is required"; }
-
-if [[ -z "$INSTALL_DIR" ]]; then
-  if is_darwin; then
-    INSTALL_DIR="/Users/${USERNAME}/.base-tooling"
-  else
-    if have getent && getent passwd "$USERNAME" >/dev/null 2>&1; then
-      INSTALL_DIR="$(getent passwd "$USERNAME" | cut -d: -f6)/.base-tooling"
-    else
-      INSTALL_DIR="$HOME/.base-tooling"
-      warn "User '$USERNAME' not found via getent; using INSTALL_DIR=$INSTALL_DIR"
-    fi
-  fi
-fi
+[[ -n "$USERNAME" ]] || die "Missing --user <name>"
 
 msg "Base tooling update (Day-2) starting..."
 msg "Detected OS: $(uname -s) ($(uname -m))"
-msg "Using user: ${USERNAME}"
-msg "Repo dir: ${INSTALL_DIR}"
+msg "Using user: $USERNAME"
+msg "Repo dir: $INSTALL_DIR"
 
-[[ -d "${INSTALL_DIR}/.git" ]] || die "Repo not found at ${INSTALL_DIR}. Run install first."
+ensure_nix_available
 
-update_repo() {
+if [[ ! -d "$INSTALL_DIR/.git" ]]; then
+  die "Repo not found at $INSTALL_DIR. Run install.sh first."
+fi
+
+if [[ $NO_PULL -eq 0 ]]; then
   msg "Updating repo..."
-
-  if [[ "$NO_PULL" == "true" ]]; then
-    msg "Skipping git pull (--no-pull)."
-    return 0
-  fi
-
-  # Allow "dirty" working tree if ONLY flake.lock or result/ changed.
-  local dirty
-  dirty="$(git -C "$INSTALL_DIR" status --porcelain \
-    | awk '{print $2}' \
-    | grep -vE '^(flake\.lock|result/|result$)$' || true)"
-
-  if [[ -n "$dirty" ]]; then
-    die "Working tree has uncommitted changes in ${INSTALL_DIR} (excluding flake.lock/result). Commit/stash them, or re-run with --no-pull."
-  fi
-
+  git -C "$INSTALL_DIR" fetch --prune
+  git -C "$INSTALL_DIR" checkout -q main || true
   git -C "$INSTALL_DIR" pull --ff-only
-  msg "Current branch $(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD) is up to date."
-}
-
-apply_configuration() {
-  msg "Applying declarative configuration..."
-  export BASE_TOOLING_USER="${USERNAME}"
-
-  if is_darwin; then
-    require_sudo
-    nix build --impure -o "${INSTALL_DIR}/result" "${INSTALL_DIR}#darwinConfigurations.default.system"
-    sudo --preserve-env=BASE_TOOLING_USER "${INSTALL_DIR}/result/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#default"
-  else
-# Home Manager (sometimes) calls `nix profile add ...`. Newer Nix uses `nix profile install`.
-
-# If `add` is missing, provide a tiny shim `nix` for this run so activation doesn't fail.
-
-local _nix_shim_dir=""
-
-if ! nix profile add --help >/dev/null 2>&1; then
-
-  if nix profile install --help >/dev/null 2>&1; then
-
-    msg "Linux: Enabling Nix 'profile add' compatibility shim for this run."
-
-    _nix_shim_dir="$(mktemp -d)"
-
-    local _real_nix
-
-    _real_nix="$(command -v nix)"
-
-    cat >"$_nix_shim_dir/nix" <<EOF
-
-#!/usr/bin/env bash
-
-set -euo pipefail
-
-REAL_NIX="{_real_nix}"
-
-if [[ "${1- }" == "profile" && "${2- }" == "add" ]]; then
-
-  shift 2
-
-  exec "${REAL_NIX}" profile install "$@"
-
+else
+  msg "Skipping git pull (--no-pull)."
 fi
 
-exec "${REAL_NIX}" "$@"
+apply_configuration "$INSTALL_DIR" "$USERNAME"
 
-EOF
-
-    chmod +x "$_nix_shim_dir/nix"
-
-    export PATH="$_nix_shim_dir:$PATH"
-
-  fi
-
-fi
-
-
-    nix run github:nix-community/home-manager -- \
-      switch -b backup \
-      --impure \
-      --flake "${INSTALL_DIR}#${USERNAME}@linux"
-  fi
-}
-
-update_repo
-apply_configuration
 msg "Done."
+if ! is_darwin; then
+  msg "Open a NEW terminal (or run: source ~/.profile) so PATH updates take effect."
+fi
