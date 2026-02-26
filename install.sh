@@ -61,18 +61,12 @@ ensure_nix() {
     return
   fi
 
-  msg "Installing Nix (Determinate Nix Installer)..."
-  # Determinate installer provides uninstall via /nix/nix-installer uninstall
-  curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install
+  msg "Installing Nix (official installer)..."
 
-  # Load nix into current shell (best-effort)
-  if [[ -e "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" ]]; then
-    # shellcheck disable=SC1091
-    . "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
-  elif [[ -e "${HOME}/.nix-profile/etc/profile.d/nix.sh" ]]; then
-    # shellcheck disable=SC1091
-    . "${HOME}/.nix-profile/etc/profile.d/nix.sh"
-  fi
+  sh <(curl -L https://nixos.org/nix/install) --daemon
+
+  # shell neu laden
+  . /etc/profile.d/nix.sh || true
 
   require_cmd nix || err "Nix install finished but 'nix' not found in PATH in this shell. Open a new terminal and re-run."
 }
