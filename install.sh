@@ -29,56 +29,6 @@ require_sudo() {
   fi
 }
 
-# --- Nix compatibility shim -----------------------------------------------
-# Some older tools (incl. some Home Manager builds) still invoke:
-#   nix profile add ...
-# Newer Nix versions may have removed/never supported "profile add" and use:
-#   nix profile install ...
-# We create a temporary "nix" wrapper early in PATH for the duration of the
-# Home Manager run to translate "profile add" -> "profile install".
-nix_needs_profile_add_shim() {
-  local out
-  out="$(nix profile add --help 2>&1 || true)"
-  echo "$out" | grep -qi "not a recognised command"
-}
-
-with_nix_profile_add_shim() {
-  # Usage: with_nix_profile_add_shim <command> [args...]
-  if ! command -v nix >/dev/null 2>&1; then
-    "$@"
-    return
-  fi
-
-  if ! nix_needs_profile_add_shim; then
-    "$@"
-    return
-  fi
-
-  msg "Linux: Enabling Nix 'profile add' compatibility shim for this run."
-  (
-    set -euo pipefail
-    local real_nix tmpdir
-    real_nix="$(command -v nix)"
-    tmpdir="$(mktemp -d)"
-    trap 'rm -rf "$tmpdir"' EXIT
-
-    cat >"$tmpdir/nix" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-REAL_NIX="$real_nix"
-if [[ "\${1:-}" == "profile" && "\${2:-}" == "add" ]]; then
-  shift 2
-  exec "\$REAL_NIX" profile install "\$@"
-fi
-exec "\$REAL_NIX" "\$@"
-EOF
-    chmod +x "$tmpdir/nix"
-    export PATH="$tmpdir:$PATH"
-    "$@"
-  )
-}
-
-
 usage() {
   cat <<'USAGE'
 Usage:
@@ -322,7 +272,33 @@ apply_configuration() {
     sudo ./result/sw/bin/darwin-rebuild switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
   else
     # Linux Home Manager configuration for "<user>@linux"
-    with_nix_profile_add_shim nix run github:nix-community/home-manager -- \
+    # Home Manager (and some activation helpers) historically used
+    # `nix profile add`, but newer Nix versions removed the `add` subcommand
+    # (use `nix profile install` instead). If `add` is missing, we provide a
+    # tiny wrapper just for this run and point Home Manager to it.
+    local hm_env=()
+    if nix profile add --help >/dev/null 2>&1; then
+      :
+    else
+      msg "Linux: enabling 'nix profile add' compatibility shim for this run."
+      local real_nix shim_dir
+      real_nix="$(command -v nix)"
+      shim_dir="$(mktemp -d)"
+      cat >"${shim_dir}/nix" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+REAL_NIX='${real_nix}'
+if [ "${1:-}" = "profile" ] && [ "${2:-}" = "add" ]; then
+  shift 2
+  exec "${real_nix}" profile install "$@"
+fi
+exec "${real_nix}" "$@"
+EOF
+      chmod +x "${shim_dir}/nix"
+      hm_env+=("NIX=${shim_dir}/nix" "NIX_BIN=${shim_dir}/nix" "HOME_MANAGER_NIX=${shim_dir}/nix" "PATH=${shim_dir}:$PATH")
+    fi
+
+    env "${hm_env[@]}" nix run github:nix-community/home-manager -- \
       switch \
       --impure \
       --flake "${INSTALL_DIR}#${USERNAME}@linux"
