@@ -77,19 +77,6 @@ ensure_nix() {
         --nix-build-group-id 350 \
         --no-modify-profile \
         --no-confirm
-
-    # IMPORTANT: Make nix available in THIS script run (non-interactive shell)
-  if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
-    # shellcheck disable=SC1091
-    . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
-  fi
-
-  # Fallback: ensure PATH contains nix even if profile script didn’t run
-  export PATH="/nix/var/nix/profiles/default/bin:$PATH"
-
-  if ! command -v nix >/dev/null 2>&1; then
-    err "Nix was installed but is still not on PATH. Try: . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
-  fi
 }
 
 ensure_flakes() {
