@@ -77,6 +77,7 @@ ensure_nix() {
         --nix-build-group-id 350 \
         --no-modify-profile \
         --no-confirm
+  . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
 }
 
 ensure_flakes() {
