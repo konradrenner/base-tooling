@@ -77,7 +77,10 @@ ensure_nix() {
         --nix-build-group-id 350 \
         --no-modify-profile \
         --no-confirm
-  . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+  # make nix available for the remainder of THIS script run
+  if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+    . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+  fi
 }
 
 ensure_flakes() {
@@ -112,29 +115,56 @@ ensure_linux_zsh_default() {
 
   msg "Linux: ensuring zsh is installed and set as login shell for user '${USERNAME}' (bash remains installed)."
 
-  if ! require_cmd zsh; then
-    if require_cmd apt-get; then
-      sudo apt-get update -y
-      sudo apt-get install -y zsh
-    else
-      msg "Linux: zsh missing and no apt-get found. Please install zsh manually, then re-run."
-      return
-    fi
+  # install zsh from OS packages so it's a valid shell in /etc/shells
+  if ! command -v zsh >/dev/null 2>&1; then
+    msg "Linux: installing zsh via apt (valid login shell)."
+    ensure_sudo
+    sudo apt-get update -y
+    sudo apt-get install -y zsh
   fi
 
-  local target_shell="/usr/bin/zsh"
-  if [[ ! -x "$target_shell" ]]; then
-    # fallback
-    target_shell="$(command -v zsh)"
+  # set login shell (bash remains installed; we only switch for this user)
+  if [ "${SHELL:-}" != "$(command -v zsh)" ]; then
+    msg "Linux: setting zsh as login shell for ${USERNAME}."
+    ensure_sudo
+    sudo chsh -s "$(command -v zsh)" "${USERNAME}"
   fi
+}
 
-  if [[ -x "$target_shell" ]]; then
-    # Only change if it's not already set
-    if [[ "${SHELL:-}" != "$target_shell" ]]; then
-      # Requires password; changes only for this user
-      chsh -s "$target_shell" "$USER" || true
+ensure_linux_shell_integration() {
+  # ensures that future shells have nix + hm env without clobbering user's config
+  local nix_hook='/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
+  local hm_hook='$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh'
+
+  local block
+  block=$(
+    cat <<'EOF'
+# >>> base-tooling (nix + home-manager) >>>
+if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+  . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+fi
+if [ -e "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
+  . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
+fi
+# <<< base-tooling (nix + home-manager) <<<
+EOF
+  )
+
+  # Bash: login + interactive
+  for f in "$HOME/.profile" "$HOME/.bashrc"; do
+    touch "$f"
+    if ! grep -q 'base-tooling (nix + home-manager)' "$f"; then
+      printf "\n%s\n" "$block" >> "$f"
     fi
-  fi
+  done
+
+  # Zsh: login + interactive
+  for f in "$HOME/.zprofile" "$HOME/.zshrc"; do
+    touch "$f"
+    if ! grep -q 'base-tooling (nix + home-manager)' "$f"; then
+      printf "\n%s\n" "$block" >> "$f"
+    fi
+  done
 }
 
 apply_configuration() {
@@ -172,6 +202,7 @@ if is_linux; then msg "Detected OS: Linux ($(uname -m))"; fi
 ensure_nix
 ensure_flakes
 ensure_repo
+ensure_linux_shell_integration
 apply_configuration
 ensure_linux_zsh_default
 
