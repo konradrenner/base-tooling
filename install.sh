@@ -1,200 +1,362 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'echo "ERROR: install.sh failed at line $LINENO." >&2' ERR
 
-# base-tooling install (Day-0)
+# --------- config ----------
+REPO_URL="https://github.com/konradrenner/base-tooling.git"
+DEFAULT_INSTALL_DIR="${HOME}/.base-tooling"
+DARWIN_TARGET="default"
+# ---------------------------
 
-msg() { printf '\n==> %s\n' "$*"; }
-warn() { printf '\nWARN: %s\n' "$*"; }
-die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
+is_linux()  { [ "$(uname -s)" = "Linux" ]; }
+is_darwin() { [ "$(uname -s)" = "Darwin" ]; }
 
-have() { command -v "$1" >/dev/null 2>&1; }
-is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
+msg() { printf "\n==> %s\n" "$*"; }
+
+require_cmd() {
+  local c="$1"
+  if ! command -v "$c" >/dev/null 2>&1; then
+    echo "ERROR: required command not found: $c" >&2
+    exit 1
+  fi
+}
 
 require_sudo() {
-  if [[ ${EUID:-0} -ne 0 ]]; then
-    msg "Sudo privileges required. You may be prompted for your password."
-    sudo -v
+  require_cmd sudo
+  if ! sudo -n true 2>/dev/null; then
+    echo "Sudo privileges required. You may be prompted for your password."
+    sudo true
   fi
 }
 
-source_nix_profile() {
-  if [[ -r /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]]; then
-    # shellcheck disable=SC1091
-    . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
-  fi
-  if [[ -r "$HOME/.nix-profile/etc/profile.d/nix.sh" ]]; then
-    # shellcheck disable=SC1091
-    . "$HOME/.nix-profile/etc/profile.d/nix.sh"
-  fi
-  if [[ -r /etc/profile.d/nix.sh ]]; then
-    # shellcheck disable=SC1091
-    . /etc/profile.d/nix.sh
-  fi
-}
-
-ensure_nix_available() {
-  source_nix_profile
-  if have nix; then return; fi
-  for p in /nix/var/nix/profiles/default/bin/nix "$HOME/.nix-profile/bin/nix"; do
-    if [[ -x "$p" ]]; then
-      export PATH="$(dirname "$p"):$PATH"
-      return
-    fi
-  done
-  die "Nix not found in PATH. Install Nix first, then re-run."
+# --- Nix compatibility shim -----------------------------------------------
+# Some older tools (incl. some Home Manager builds) still invoke:
+#   nix profile add ...
+# Newer Nix versions may have removed/never supported "profile add" and use:
+#   nix profile install ...
+# We create a temporary "nix" wrapper early in PATH for the duration of the
+# Home Manager run to translate "profile add" -> "profile install".
+nix_needs_profile_add_shim() {
+  local out
+  out="$(nix profile add --help 2>&1 || true)"
+  echo "$out" | grep -qi "not a recognised command"
 }
 
 with_nix_profile_add_shim() {
-  ensure_nix_available
+  # Usage: with_nix_profile_add_shim <command> [args...]
+  if ! command -v nix >/dev/null 2>&1; then
+    "$@"
+    return
+  fi
 
-  local real_nix
-  real_nix="$(command -v nix)"
-  [[ -n "$real_nix" && -x "$real_nix" ]] || die "Could not locate real nix binary."
+  if ! nix_needs_profile_add_shim; then
+    "$@"
+    return
+  fi
 
-  local tmp
-  tmp="$(mktemp -d 2>/dev/null || mktemp -d -t base-tooling-nixshim)"
+  msg "Linux: Enabling Nix 'profile add' compatibility shim for this run."
+  (
+    set -euo pipefail
+    local real_nix tmpdir
+    real_nix="$(command -v nix)"
+    tmpdir="$(mktemp -d)"
+    trap 'rm -rf "$tmpdir"' EXIT
 
-  cat >"$tmp/nix" <<'EOF'
+    cat >"$tmpdir/nix" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-
-REAL_NIX="__REAL_NIX__"
-
-if [[ "${1:-}" == "profile" && "${2:-}" == "add" ]]; then
+REAL_NIX="$real_nix"
+if [[ "\${1:-}" == "profile" && "\${2:-}" == "add" ]]; then
   shift 2
-  exec "$REAL_NIX" profile install "$@"
+  exec "\$REAL_NIX" profile install "\$@"
 fi
-
-exec "$REAL_NIX" "$@"
+exec "\$REAL_NIX" "\$@"
 EOF
-
-  perl -0777 -i -pe "s#__REAL_NIX__#${real_nix}#g" "$tmp/nix" 2>/dev/null || \
-    sed -i "s#__REAL_NIX__#${real_nix}#g" "$tmp/nix"
-
-  chmod +x "$tmp/nix"
-
-  PATH="$tmp:$PATH" "$@"
-
-  rm -rf "$tmp" >/dev/null 2>&1 || true
+    chmod +x "$tmpdir/nix"
+    export PATH="$tmpdir:$PATH"
+    "$@"
+  )
 }
 
-ensure_shell_integration_linux() {
-  msg "Linux: Ensuring shells load Nix + Home Manager environment (idempotent)."
-  ensure_nix_available
 
-  local block
-  block=$(cat <<'EOF'
-# >>> base-tooling:env >>>
-# Nix (daemon) environment
-if [ -r /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
-  . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
-elif [ -r "$HOME/.nix-profile/etc/profile.d/nix.sh" ]; then
-  . "$HOME/.nix-profile/etc/profile.d/nix.sh"
-fi
+usage() {
+  cat <<'USAGE'
+Usage:
+  install.sh --user <username> [--dir <path>] [--no-clone]
 
-# Home Manager session variables
-if [ -r "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
-  . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
-fi
-# <<< base-tooling:env <<<
-EOF
-)
+Required:
+  --user <username>   Local account name (e.g. koni)
 
-  local bashrc="$HOME/.bashrc"; touch "$bashrc"
-  if ! grep -q "^# >>> base-tooling:env >>>" "$bashrc" 2>/dev/null; then
-    printf '\n%s\n' "$block" >> "$bashrc"
-  fi
+Optional:
+  --dir <path>        Install/checkout directory (default: ~/.base-tooling)
+  --no-clone          Do not clone/fetch; use current directory as repo
+                      (useful for local development)
 
-  local profile="$HOME/.profile"; touch "$profile"
-  if ! grep -q "^# >>> base-tooling:env >>>" "$profile" 2>/dev/null; then
-    printf '\n%s\n' "$block" >> "$profile"
-  fi
+Examples:
+  ./install.sh --user koni
+  ./install.sh --user koni --dir ~/.base-tooling
 
-  local zprofile="$HOME/.zprofile"; touch "$zprofile"
-  if ! grep -q "^# >>> base-tooling:zprofile >>>" "$zprofile" 2>/dev/null; then
-    cat >>"$zprofile" <<'EOF'
-# >>> base-tooling:zprofile >>>
-[ -r "$HOME/.profile" ] && . "$HOME/.profile"
-# <<< base-tooling:zprofile <<<
-EOF
+  # Day-0 from a completely new machine (no git clone required):
+  curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/install.sh | bash -s -- --user koni
+USAGE
+}
+
+USERNAME=""
+INSTALL_DIR="${DEFAULT_INSTALL_DIR}"
+NO_CLONE=0
+
+parse_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --user)
+        shift
+        USERNAME="${1:-}"
+        shift
+        ;;
+      --dir)
+        shift
+        INSTALL_DIR="${1:-}"
+        shift
+        ;;
+      --no-clone)
+        NO_CLONE=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "Unknown option: $1" >&2
+        usage
+        exit 2
+        ;;
+    esac
+  done
+
+  if [ -z "${USERNAME}" ]; then
+    echo "ERROR: --user is required." >&2
+    usage
+    exit 2
   fi
 }
 
-ensure_repo() {
-  local install_dir="$1"
+ensure_nix() {
+  if command -v nix >/dev/null 2>&1; then
+    msg "Nix already installed."
+    return 0
+  fi
 
-  if [[ -d "$install_dir/.git" ]]; then
-    msg "Repo already cloned. Fetching latest..."
-    git -C "$install_dir" fetch --prune
-    git -C "$install_dir" checkout -q main || true
-    git -C "$install_dir" pull --ff-only
+  msg "Installing Nix (Determinate Systems installer)..."
+  require_cmd curl
+  curl -fsSL https://install.determinate.systems/nix | sh -s -- install
+
+  # best-effort load for current shell
+  if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+    # shellcheck disable=SC1091
+    . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+  fi
+
+  require_cmd nix
+}
+
+enable_flakes() {
+  msg "Enabling nix-command + flakes (idempotent)."
+  mkdir -p ~/.config/nix
+  if [ ! -f ~/.config/nix/nix.conf ]; then
+    cat > ~/.config/nix/nix.conf <<'EOF'
+experimental-features = nix-command flakes
+EOF
+    return 0
+  fi
+
+  if ! grep -q "experimental-features" ~/.config/nix/nix.conf; then
+    echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+  elif ! grep -q "flakes" ~/.config/nix/nix.conf; then
+    echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+  fi
+}
+
+ensure_homebrew_darwin() {
+  if ! is_darwin; then return 0; fi
+
+  # nix-darwin can manage Homebrew packages declaratively, but Homebrew itself must exist.
+  if command -v brew >/dev/null 2>&1; then
+    msg "Homebrew already installed."
+    return 0
+  fi
+
+  msg "Homebrew not found. Installing Homebrew (required for Rancher Desktop cask on macOS)..."
+  require_cmd curl
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+  # Ensure brew is in PATH for this script run (Apple Silicon default location)
+  if [ -x /opt/homebrew/bin/brew ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  fi
+
+  require_cmd brew
+}
+
+install_rancher_desktop_linux() {
+  if ! is_linux; then return 0; fi
+
+  msg "Linux: Installing Rancher Desktop from upstream release (.deb/.rpm) if missing..."
+  if command -v rancher-desktop >/dev/null 2>&1; then
+    msg "Rancher Desktop already installed."
+    return 0
+  fi
+
+  local pkgtype=""
+  if command -v apt-get >/dev/null 2>&1; then
+    pkgtype="deb"
+  elif command -v dnf >/dev/null 2>&1 || command -v rpm >/dev/null 2>&1; then
+    pkgtype="rpm"
   else
-    msg "Cloning repo into $install_dir"
-    git clone https://github.com/konradrenner/base-tooling "$install_dir"
+    msg "No supported package manager found (need apt or rpm). Skipping Rancher Desktop install."
+    return 0
+  fi
+
+  require_sudo
+  require_cmd curl
+
+  local arch
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64) arch="x86_64" ;;
+    aarch64|arm64) arch="aarch64" ;;
+  esac
+
+  local tag asset_url
+  tag="$(curl -fsSL https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest \
+    | grep -m1 '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')"
+
+  asset_url="$(curl -fsSL "https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/tags/${tag}" \
+    | grep -Eo 'https://[^"]+\.(deb|rpm)' \
+    | grep -E "${pkgtype}$" \
+    | grep -E "${arch}" \
+    | head -n1)"
+
+  if [ -z "$asset_url" ]; then
+    msg "Could not find matching ${pkgtype} asset for arch ${arch}. Skipping."
+    return 0
+  fi
+
+  local tmp pkg
+  tmp="$(mktemp -d)"
+  pkg="${tmp}/rancher-desktop.${pkgtype}"
+  curl -fsSL "$asset_url" -o "$pkg"
+
+  if [ "$pkgtype" = "deb" ]; then
+    sudo apt-get update
+    sudo apt-get install -y "$pkg"
+  else
+    if command -v dnf >/dev/null 2>&1; then
+      sudo dnf install -y "$pkg"
+    else
+      sudo rpm -Uvh --replacepkgs "$pkg"
+    fi
+  fi
+
+  msg "Rancher Desktop installed. Start it once and select 'dockerd (moby)' for VS Code Dev Containers."
+}
+
+ensure_git() {
+  if command -v git >/dev/null 2>&1; then
+    msg "git already installed."
+    return 0
+  fi
+
+  if is_darwin; then
+    msg "git not found. Installing Xcode Command Line Tools (interactive prompt may appear)..."
+    xcode-select --install || true
+    echo "After CLT install finishes, re-run this install command." >&2
+    exit 1
+  fi
+
+  msg "git not found. Installing via package manager..."
+  require_sudo
+
+  if command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update && sudo apt-get install -y git
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo dnf install -y git
+  elif command -v pacman >/dev/null 2>&1; then
+    sudo pacman -S --noconfirm git
+  else
+    echo "ERROR: cannot install git automatically on this Linux." >&2
+    echo "Install git manually and re-run." >&2
+    exit 1
+  fi
+}
+
+clone_or_update_repo() {
+  if [ "$NO_CLONE" -eq 1 ]; then
+    msg "--no-clone set: using current directory as repo"
+    INSTALL_DIR="$(pwd)"
+    return 0
+  fi
+
+  msg "Ensuring repo is present at: ${INSTALL_DIR}"
+  if [ -d "${INSTALL_DIR}/.git" ]; then
+    msg "Repo already cloned. Fetching latest..."
+    git -C "${INSTALL_DIR}" fetch --all --prune
+  else
+    msg "Cloning ${REPO_URL} ..."
+    mkdir -p "$(dirname "${INSTALL_DIR}")"
+    git clone "${REPO_URL}" "${INSTALL_DIR}"
   fi
 }
 
 apply_configuration() {
-  local install_dir="$1"
-  local username="$2"
-
   msg "Applying declarative configuration..."
-  export BASE_TOOLING_USER="$username"
-
-  ensure_nix_available
+  export BASE_TOOLING_USER="${USERNAME}"
 
   if is_darwin; then
     require_sudo
-    nix build --impure "${install_dir}#darwinConfigurations.default.system" -L
-    sudo BASE_TOOLING_USER="$username" ./result/sw/bin/darwin-rebuild switch --impure --flake "${install_dir}#default"
-  else
-    msg "Starting Home Manager activation"
-    with_nix_profile_add_shim \
-      nix run github:nix-community/home-manager -- \
-        switch \
-        -b before-hm \
-        --impure \
-        --flake "${install_dir}#${username}@linux"
 
-    ensure_shell_integration_linux
+    # Build system configuration (user context). --impure needed for BASE_TOOLING_USER via getEnv.
+    nix build --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
+
+    # Activate as root
+    sudo ./result/sw/bin/darwin-rebuild switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+  else
+    # Linux Home Manager configuration for "<user>@linux"
+    with_nix_profile_add_shim nix run github:nix-community/home-manager -- \
+      switch \
+      --impure \
+      --flake "${INSTALL_DIR}#${USERNAME}@linux"
   fi
 }
 
-# -------------------- args --------------------
-USERNAME=""
-INSTALL_DIR="$HOME/.base-tooling"
+main() {
+  parse_args "$@"
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --user) USERNAME="${2:-}"; shift 2 ;;
-    --dir) INSTALL_DIR="${2:-}"; shift 2 ;;
-    *) die "Unknown argument: $1" ;;
-  esac
-done
+  msg "Base tooling install (Day-0) starting..."
+  msg "Detected OS: $(uname -s) ($(uname -m))"
+  msg "Using user: ${USERNAME}"
+  msg "Repo dir: ${INSTALL_DIR}"
 
-[[ -n "$USERNAME" ]] || die "Missing --user <name>"
+  require_cmd curl
 
-msg "Base tooling install (Day-0) starting..."
-msg "Detected OS: $(uname -s) ($(uname -m))"
-msg "Using user: $USERNAME"
-msg "Repo dir: $INSTALL_DIR"
+  ensure_nix
+  enable_flakes
 
-ensure_nix_available
+  # macOS: Rancher Desktop installed declaratively via nix-darwin Homebrew cask (brew must exist)
+  ensure_homebrew_darwin
 
-if ! have git; then
-  if is_darwin; then
-    die "git not found. Please install Xcode Command Line Tools (xcode-select --install) and re-run."
-  else
-    msg "Installing git (apt)"
-    sudo apt-get update -y
-    sudo apt-get install -y git
-  fi
-fi
+  # Linux: install Rancher Desktop via upstream package (optional but default)
+  install_rancher_desktop_linux
 
-ensure_repo "$INSTALL_DIR"
-apply_configuration "$INSTALL_DIR" "$USERNAME"
+  ensure_git
+  clone_or_update_repo
+  apply_configuration
 
-msg "Done."
-if ! is_darwin; then
-  msg "Open a NEW terminal (or run: source ~/.profile) so PATH updates take effect."
-fi
+  msg "Done."
+  echo "Next:"
+  echo " - Open a new terminal."
+  echo " - Start Rancher Desktop. Choose 'dockerd (moby)' for VS Code Dev Containers."
+  echo " - Day-2 updates: ${INSTALL_DIR}/update.sh --user ${USERNAME}"
+}
+
+main "$@"
