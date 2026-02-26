@@ -63,7 +63,7 @@ ensure_nix() {
 
   msg "Installing Nix (Determinate Nix Installer) with nixbld GID=350..."
 
-  require_sudo
+  ensure_sudo
 
   # Run installer as root (Determinate escalates), but we pass the settings explicitly.
   # - --determinate: install Determinate Nix
