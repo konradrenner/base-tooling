@@ -65,11 +65,6 @@ ensure_nix() {
 
   ensure_sudo
 
-  # Run installer as root (Determinate escalates), but we pass the settings explicitly.
-  # - --determinate: install Determinate Nix
-  # - --nix-build-group-id 350: avoid collision with existing GID 30000 (your fuse group)
-  # - --no-modify-profile: don't touch /etc/bash.bashrc etc.
-  # - --no-confirm: non-interactive
   curl -fsSL https://install.determinate.systems/nix \
     | sudo env \
         NIX_INSTALLER_NIX_BUILD_GROUP_ID=350 \
