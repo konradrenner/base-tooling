@@ -2,119 +2,76 @@
 set -euo pipefail
 
 # base-tooling update (Day-2)
-# - Updates repo (pull latest)
-# - Applies configuration (same as install)
-# - Ensures bash on Linux picks up Nix + Home Manager env
+# Usage:
+#   ./update.sh --user <username> [--no-pull]
 
-SCRIPT_NAME="$(basename "$0")"
-REPO_URL_DEFAULT="https://github.com/konradrenner/base-tooling.git"
-INSTALL_DIR_DEFAULT="$HOME/.base-tooling"
-DARWIN_TARGET_DEFAULT="default"
-
-msg() { printf "\n==> %s\n" "$*"; }
-warn() { printf "warning: %s\n" "$*" >&2; }
-die() { printf "ERROR: %s\n" "$*" >&2; exit 1; }
-
-is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
-is_linux()  { [[ "$(uname -s)" == "Linux"  ]]; }
-
-need_cmd() { command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"; }
-
-require_sudo() {
-  msg "Sudo privileges required. You may be prompted for your password."
-  sudo -v
-}
+msg()  { printf '\n==> %s\n\n' "$*"; }
+err()  { printf 'ERROR: %s\n' "$*" >&2; }
 
 usage() {
-  cat <<EOF
-Usage:
-  $SCRIPT_NAME --user <username> [--dir <path>] [--no-pull] [--darwin-target <name>]
+  cat <<'USAGE'
+Usage: update.sh --user <username> [--no-pull]
 
-Examples:
-  ./update.sh --user koni
-  ./update.sh --user koni --no-pull
-EOF
+Options:
+  --user <name>   Username to configure (required)
+  --dir <path>    Repo directory (default: ~/.base-tooling)
+  --no-pull       Do not git pull (useful when you have local changes)
+  -h, --help      Show help
+USAGE
 }
 
-USERNAME=""
-INSTALL_DIR="$INSTALL_DIR_DEFAULT"
-DARWIN_TARGET="$DARWIN_TARGET_DEFAULT"
-NO_PULL="0"
+is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --user) USERNAME="${2:-}"; shift 2;;
-    --dir) INSTALL_DIR="${2:-}"; shift 2;;
-    --darwin-target) DARWIN_TARGET="${2:-}"; shift 2;;
-    --no-pull) NO_PULL="1"; shift;;
-    -h|--help) usage; exit 0;;
-    *) die "Unknown argument: $1";;
-  esac
-done
-
-[[ -n "$USERNAME" ]] || { usage; die "--user is required"; }
-
-msg "Base tooling update (Day-2) starting..."
-msg "Detected OS: $(uname -s) ($(uname -m))"
-msg "Using user: $USERNAME"
-msg "Repo dir: $INSTALL_DIR"
-
-need_cmd git
-need_cmd nix
-
-update_repo() {
-  msg "Updating repo..."
-  if [[ ! -d "$INSTALL_DIR/.git" ]]; then
-    die "Repo not found at $INSTALL_DIR. Run install.sh first."
-  fi
-
-  if [[ "$NO_PULL" == "1" ]]; then
-    msg "Skipping pull (--no-pull)."
-    return 0
-  fi
-
-  # If there are local changes, don't destroy them. Just fetch and try ff-only merge.
-  git -C "$INSTALL_DIR" fetch --all --prune
-  if git -C "$INSTALL_DIR" merge --ff-only origin/main >/dev/null 2>&1; then
-    msg "Updated to latest origin/main."
-  else
-    msg "Current branch already up to date (or local changes prevent fast-forward)."
+require_sudo() {
+  if ! sudo -n true 2>/dev/null; then
+    msg "Sudo privileges required. You may be prompted for your password."
+    sudo true
   fi
 }
 
-ensure_bash_sees_nix_linux() {
-  msg "Linux: Ensuring bash sees Nix + Home Manager environment (idempotent)."
-
-  local bashrc="$HOME/.bashrc"
-  touch "$bashrc"
-
-  local begin="# >>> base-tooling: nix+home-manager >>>"
-
-  if grep -qF "$begin" "$bashrc"; then
-    msg "Linux: bash integration already present."
-    return 0
+ensure_home_manager_cli() {
+  if command -v home-manager >/dev/null 2>&1; then
+    return
   fi
+  msg "Ensuring home-manager CLI is installed (nix profile)."
+  nix profile install \
+    --extra-experimental-features nix-command \
+    --extra-experimental-features flakes \
+    github:nix-community/home-manager
+}
 
-  cat >>"$bashrc" <<'EOF'
+ensure_linux_bash_integration() {
+  local snippet_dir="$HOME/.config/base-tooling"
+  local snippet_file="$snippet_dir/bashrc.snippet"
+  mkdir -p "$snippet_dir"
 
-# >>> base-tooling: nix+home-manager >>>
-# Ensure Nix profile is available in interactive bash shells.
-# (Does not change prompt/colors; only ensures PATH + env vars.)
-if [ -e "/etc/profile.d/nix.sh" ]; then
-  . "/etc/profile.d/nix.sh"
+  cat > "$snippet_file" <<'SNIPPET'
+# --- base-tooling (managed) ---
+if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+  # shellcheck disable=SC1091
+  . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
 elif [ -e "$HOME/.nix-profile/etc/profile.d/nix.sh" ]; then
+  # shellcheck disable=SC1091
   . "$HOME/.nix-profile/etc/profile.d/nix.sh"
 fi
 
-# Home Manager session vars (if present)
 if [ -e "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
+  # shellcheck disable=SC1091
   . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
 fi
-# <<< base-tooling: nix+home-manager <<<
-EOF
+# --- /base-tooling (managed) ---
+SNIPPET
 
-  msg "Linux: Added bash integration block to ~/.bashrc"
-  msg "Open a NEW terminal (or run: source ~/.bashrc) so PATH updates take effect."
+  local bashrc="$HOME/.bashrc"
+  touch "$bashrc"
+  local marker="# base-tooling: source managed snippet"
+  if ! grep -Fq "$marker" "$bashrc"; then
+    {
+      echo
+      echo "$marker"
+      echo "[ -f \"$snippet_file\" ] && . \"$snippet_file\""
+    } >> "$bashrc"
+  fi
 }
 
 apply_configuration() {
@@ -123,21 +80,66 @@ apply_configuration() {
 
   if is_darwin; then
     require_sudo
-    nix build --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
-    sudo env BASE_TOOLING_USER="$USERNAME" ./result/sw/bin/darwin-rebuild switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
-  elif is_linux; then
+    nix build --impure "$INSTALL_DIR#darwinConfigurations.${DARWIN_TARGET}.system"
+    sudo --preserve-env=BASE_TOOLING_USER ./result/sw/bin/darwin-rebuild switch --impure --flake "$INSTALL_DIR#${DARWIN_TARGET}"
+    ensure_home_manager_cli
+  else
     nix run github:nix-community/home-manager -- \
       switch \
-      -b before-hm \
       --impure \
-      --flake "${INSTALL_DIR}#${USERNAME}@linux"
-    ensure_bash_sees_nix_linux
-  else
-    die "Unsupported OS: $(uname -s)"
+      --flake "$INSTALL_DIR#${USERNAME}@linux" \
+      -b backup
+
+    ensure_home_manager_cli
+    ensure_linux_bash_integration
+
+    msg "Linux: Open a NEW terminal (or run: source ~/.bashrc) so PATH updates take effect."
   fi
 }
 
-update_repo
+USERNAME=""
+INSTALL_DIR="${HOME}/.base-tooling"
+DARWIN_TARGET="default"
+NO_PULL=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --user)
+      USERNAME="$2"; shift 2;;
+    --dir)
+      INSTALL_DIR="$2"; shift 2;;
+    --no-pull)
+      NO_PULL=1; shift;;
+    -h|--help)
+      usage; exit 0;;
+    *)
+      err "Unknown argument: $1"; usage; exit 1;;
+  esac
+done
+
+if [[ -z "$USERNAME" ]]; then
+  err "--user is required"; usage; exit 1
+fi
+
+msg "Base tooling update (Day-2) starting..."
+msg "Using user: $USERNAME"
+msg "Repo dir: $INSTALL_DIR"
+
+if [[ ! -d "$INSTALL_DIR/.git" ]]; then
+  err "Repo not found at $INSTALL_DIR. Run install.sh first."; exit 1
+fi
+
+msg "Updating repo..."
+if [[ "$NO_PULL" -eq 1 ]]; then
+  msg "--no-pull set; skipping git pull."
+else
+  # Avoid failing on local changes: keep it simple and informative.
+  if ! git -C "$INSTALL_DIR" diff --quiet || ! git -C "$INSTALL_DIR" diff --cached --quiet; then
+    err "Working tree has uncommitted changes in $INSTALL_DIR. Commit/stash them, or re-run with --no-pull."; exit 1
+  fi
+  git -C "$INSTALL_DIR" pull --ff-only
+fi
+
 apply_configuration
 
 msg "Done."

@@ -2,150 +2,222 @@
 set -euo pipefail
 
 # base-tooling install (Day-0)
-# - Clones/updates repo to ~/.base-tooling
-# - Applies configuration:
-#   * macOS: nix-darwin + home-manager module
-#   * Linux: home-manager standalone
-# - Ensures bash on Linux picks up Nix + Home Manager env (without changing your prompt/theme)
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/<org>/<repo>/main/install.sh | bash -s -- --user <name>
 
-SCRIPT_NAME="$(basename "$0")"
-REPO_URL_DEFAULT="https://github.com/konradrenner/base-tooling.git"
-INSTALL_DIR_DEFAULT="$HOME/.base-tooling"
-DARWIN_TARGET_DEFAULT="default"
-
-msg() { printf "\n==> %s\n" "$*"; }
-warn() { printf "warning: %s\n" "$*" >&2; }
-die() { printf "ERROR: %s\n" "$*" >&2; exit 1; }
-
-is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
-is_linux()  { [[ "$(uname -s)" == "Linux"  ]]; }
-
-arch() {
-  local m; m="$(uname -m)"
-  case "$m" in
-    x86_64|amd64) echo "x86_64" ;;
-    aarch64|arm64) echo "aarch64" ;;
-    *) echo "$m" ;;
-  esac
-}
-
-need_cmd() { command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"; }
-
-require_sudo() {
-  msg "Sudo privileges required. You may be prompted for your password."
-  sudo -v
-}
+msg()  { printf '\n==> %s\n\n' "$*"; }
+warn() { printf 'warning: %s\n' "$*" >&2; }
+err()  { printf 'ERROR: %s\n' "$*" >&2; }
 
 usage() {
-  cat <<EOF
-Usage:
-  $SCRIPT_NAME --user <username> [--repo <git-url>] [--dir <path>] [--darwin-target <name>]
+  cat <<'USAGE'
+Usage: install.sh --user <username>
 
-Examples:
-  curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/install.sh | bash -s -- --user koni
-EOF
+Options:
+  --user <name>     Username to configure (required)
+  --dir <path>      Install directory (default: ~/.base-tooling)
+  -h, --help        Show help
+USAGE
 }
 
-USERNAME=""
-REPO_URL="$REPO_URL_DEFAULT"
-INSTALL_DIR="$INSTALL_DIR_DEFAULT"
-DARWIN_TARGET="$DARWIN_TARGET_DEFAULT"
+is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
+arch() { uname -m; }
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --user) USERNAME="${2:-}"; shift 2;;
-    --repo) REPO_URL="${2:-}"; shift 2;;
-    --dir) INSTALL_DIR="${2:-}"; shift 2;;
-    --darwin-target) DARWIN_TARGET="${2:-}"; shift 2;;
-    -h|--help) usage; exit 0;;
-    *) die "Unknown argument: $1";;
-  esac
-done
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || { err "Missing required command: $1"; exit 1; }
+}
 
-[[ -n "$USERNAME" ]] || { usage; die "--user is required"; }
+require_sudo() {
+  if ! sudo -n true 2>/dev/null; then
+    msg "Sudo privileges required. You may be prompted for your password."
+    sudo true
+  fi
+}
 
-msg "Base tooling install (Day-0) starting..."
-msg "Detected OS: $(uname -s) ($(arch))"
-msg "Using user: $USERNAME"
-msg "Repo dir: $INSTALL_DIR"
-
-need_cmd git
-need_cmd curl
-
-# Nix detection (we don't install Nix here; assume it's already installed as per your environment)
-if command -v nix >/dev/null 2>&1; then
-  msg "Nix already installed."
-else
-  die "Nix is not installed. Install Nix first, then rerun."
-fi
-
-enable_nix_features() {
+ensure_nix_conf_flakes() {
   msg "Enabling nix-command + flakes (idempotent)."
-  mkdir -p "$HOME/.config/nix"
-  local conf="$HOME/.config/nix/nix.conf"
-  touch "$conf"
-  if ! grep -qE '^\s*experimental-features\s*=' "$conf"; then
-    printf "\nexperimental-features = nix-command flakes\n" >> "$conf"
+
+  # Prefer per-user nix.conf; this avoids /etc/nix/nix.conf clobber issues on Linux.
+  local nix_conf_dir="$HOME/.config/nix"
+  local nix_conf_file="$nix_conf_dir/nix.conf"
+  mkdir -p "$nix_conf_dir"
+
+  # Keep any existing content, just ensure experimental-features are present.
+  if [[ ! -f "$nix_conf_file" ]]; then
+    printf 'experimental-features = nix-command flakes\n' > "$nix_conf_file"
   else
-    # Ensure both flags present
-    if ! grep -q "nix-command" "$conf" || ! grep -q "flakes" "$conf"; then
-      # replace the line with union
-      local line
-      line="$(grep -E '^\s*experimental-features\s*=' "$conf" | tail -n1)"
-      # shell-safe: just append if missing
-      if ! grep -q "nix-command" "$conf"; then printf "\nexperimental-features = nix-command flakes\n" >> "$conf"; fi
+    if ! grep -q '^experimental-features *=.*\bflakes\b' "$nix_conf_file" 2>/dev/null; then
+      # Append safely; if there's already experimental-features without flakes, add another line.
+      printf '\nexperimental-features = nix-command flakes\n' >> "$nix_conf_file"
     fi
   fi
 }
 
-ensure_repo() {
-  msg "Ensuring repo is present at: $INSTALL_DIR"
-  if [[ -d "$INSTALL_DIR/.git" ]]; then
-    msg "Repo already cloned. Fetching latest..."
-    git -C "$INSTALL_DIR" fetch --all --prune
-    # Keep local changes (e.g., flake.lock) and just fast-forward if possible
-    git -C "$INSTALL_DIR" merge --ff-only origin/main >/dev/null 2>&1 || true
-  else
-    msg "Cloning repo..."
-    git clone "$REPO_URL" "$INSTALL_DIR"
+ensure_nix_installed() {
+  if command -v nix >/dev/null 2>&1; then
+    msg "Nix already installed."
+    return
+  fi
+
+  msg "Installing Nix (Determinate Systems installer)."
+  require_cmd curl
+  sh <(curl -L https://install.determinate.systems/nix) install
+
+  # Try to source profile if available (best-effort)
+  if [[ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]]; then
+    # shellcheck disable=SC1091
+    . '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
   fi
 }
 
-ensure_bash_sees_nix_linux() {
-  # Keep Ubuntu's default bash style; only ensure Nix/HM env is loaded for interactive shells.
-  msg "Linux: Ensuring bash sees Nix + Home Manager environment (idempotent)."
+ensure_homebrew_darwin() {
+  if ! is_darwin; then return; fi
 
-  local bashrc="$HOME/.bashrc"
-  touch "$bashrc"
-
-  local begin="# >>> base-tooling: nix+home-manager >>>"
-  local end="# <<< base-tooling: nix+home-manager <<<"
-
-  if grep -qF "$begin" "$bashrc"; then
-    msg "Linux: bash integration already present."
-    return 0
+  if command -v brew >/dev/null 2>&1; then
+    msg "Homebrew already installed."
+    return
   fi
 
-  cat >>"$bashrc" <<'EOF'
+  msg "Installing Homebrew (macOS)."
+  require_cmd curl
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# >>> base-tooling: nix+home-manager >>>
-# Ensure Nix profile is available in interactive bash shells.
-# (Does not change prompt/colors; only ensures PATH + env vars.)
-if [ -e "/etc/profile.d/nix.sh" ]; then
-  . "/etc/profile.d/nix.sh"
+  # Best-effort: ensure brew in PATH for this process
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    export PATH="/opt/homebrew/bin:$PATH"
+  fi
+}
+
+ensure_git() {
+  if command -v git >/dev/null 2>&1; then
+    msg "git already installed."
+    return
+  fi
+
+  msg "Installing git."
+  if is_darwin; then
+    # Usually already present via Xcode CLT; prompt install if needed
+    xcode-select --install || true
+  else
+    require_sudo
+    sudo apt-get update -y
+    sudo apt-get install -y git
+  fi
+}
+
+ensure_repo() {
+  local repo_url="$1"
+  local install_dir="$2"
+
+  msg "Ensuring repo is present at: $install_dir"
+
+  if [[ -d "$install_dir/.git" ]]; then
+    msg "Repo already cloned. Fetching latest..."
+    git -C "$install_dir" fetch --all --prune
+    git -C "$install_dir" checkout -q main || true
+    git -C "$install_dir" pull --ff-only || true
+    return
+  fi
+
+  msg "Cloning repo..."
+  git clone "$repo_url" "$install_dir"
+}
+
+install_rancher_desktop_linux_repo() {
+  msg "Linux: Installing Rancher Desktop via official repository..."
+
+  # If rancher-desktop is already present, don't touch apt sources.
+  if command -v rancher-desktop >/dev/null 2>&1 || command -v rancher-desktopctl >/dev/null 2>&1; then
+    msg "Rancher Desktop already installed."
+    return
+  fi
+
+  require_sudo
+  require_cmd curl
+  require_cmd gpg
+
+  sudo apt-get update -y
+  sudo apt-get install -y ca-certificates curl gnupg
+
+  # Rancher Desktop upstream currently publishes apt repo at downloads.rancherdesktop.io
+  # (Avoid rpm.rancher.io/deb which 404s).
+  local keyring='/usr/share/keyrings/rancher-desktop-archive-keyring.gpg'
+  local list='/etc/apt/sources.list.d/rancher-desktop.list'
+
+  if [[ ! -f "$keyring" ]]; then
+    curl -fsSL https://downloads.rancherdesktop.io/public-key.gpg | sudo gpg --dearmor -o "$keyring"
+    sudo chmod 0644 "$keyring"
+  fi
+
+  # Detect Ubuntu codename
+  local codename
+  codename="$(. /etc/os-release && echo "${VERSION_CODENAME:-}" )"
+  if [[ -z "$codename" ]]; then
+    codename="stable"
+  fi
+
+  # Repo layout is 'deb [signed-by=...] https://downloads.rancherdesktop.io/deb/ <codename> main'
+  # If codename isn't supported, 'stable' typically works.
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=$keyring] https://downloads.rancherdesktop.io/deb/ ${codename} main" | sudo tee "$list" >/dev/null
+
+  # Update and install
+  sudo apt-get update -y
+  sudo apt-get install -y rancher-desktop
+}
+
+ensure_home_manager_cli() {
+  # Ensure `home-manager` command exists (needed for: home-manager news, generations, etc.)
+  if command -v home-manager >/dev/null 2>&1; then
+    return
+  fi
+
+  msg "Ensuring home-manager CLI is installed (nix profile)."
+  # This is user-scoped and safe on both Linux and macOS.
+  # Use explicit experimental-features in case nix.conf isn't picked up in non-interactive shells.
+  nix profile install \
+    --extra-experimental-features nix-command \
+    --extra-experimental-features flakes \
+    github:nix-community/home-manager
+}
+
+ensure_linux_bash_integration() {
+  # Goal: keep user's bash mostly default, but guarantee Nix + HM env is loaded.
+  # We do this by creating a tiny sourced file and adding a single source line to ~/.bashrc.
+  local snippet_dir="$HOME/.config/base-tooling"
+  local snippet_file="$snippet_dir/bashrc.snippet"
+  mkdir -p "$snippet_dir"
+
+  cat > "$snippet_file" <<'SNIPPET'
+# --- base-tooling (managed) ---
+# Ensure Nix is available in non-login interactive shells.
+if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+  # shellcheck disable=SC1091
+  . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
 elif [ -e "$HOME/.nix-profile/etc/profile.d/nix.sh" ]; then
+  # shellcheck disable=SC1091
   . "$HOME/.nix-profile/etc/profile.d/nix.sh"
 fi
 
-# Home Manager session vars (if present)
+# Home Manager session variables (PATH, MANPATH, etc.)
 if [ -e "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
+  # shellcheck disable=SC1091
   . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
 fi
-# <<< base-tooling: nix+home-manager <<<
-EOF
+# --- /base-tooling (managed) ---
+SNIPPET
 
-  msg "Linux: Added bash integration block to ~/.bashrc"
-  msg "Open a NEW terminal (or run: source ~/.bashrc) so PATH updates take effect."
+  # Ensure ~/.bashrc sources it exactly once.
+  local bashrc="$HOME/.bashrc"
+  touch "$bashrc"
+
+  local marker="# base-tooling: source managed snippet"
+  if ! grep -Fq "$marker" "$bashrc"; then
+    {
+      echo
+      echo "$marker"
+      echo "[ -f \"$snippet_file\" ] && . \"$snippet_file\""
+    } >> "$bashrc"
+  fi
 }
 
 apply_configuration() {
@@ -156,26 +228,77 @@ apply_configuration() {
     require_sudo
 
     # Build system configuration (user context). --impure needed for BASE_TOOLING_USER via getEnv.
-    nix build --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
+    nix build --impure "$INSTALL_DIR#darwinConfigurations.${DARWIN_TARGET}.system"
 
-    # Activate as root (preserve BASE_TOOLING_USER)
-    sudo env BASE_TOOLING_USER="$USERNAME" ./result/sw/bin/darwin-rebuild switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
-  elif is_linux; then
+    # Activate as root (propagate BASE_TOOLING_USER into sudo env)
+    sudo --preserve-env=BASE_TOOLING_USER ./result/sw/bin/darwin-rebuild switch --impure --flake "$INSTALL_DIR#${DARWIN_TARGET}"
+
+    # Ensure HM CLI is available for convenience
+    ensure_home_manager_cli
+  else
     # Linux Home Manager configuration for "<user>@linux"
     nix run github:nix-community/home-manager -- \
       switch \
-      -b before-hm \
       --impure \
-      --flake "${INSTALL_DIR}#${USERNAME}@linux"
+      --flake "$INSTALL_DIR#${USERNAME}@linux" \
+      -b backup
 
-    ensure_bash_sees_nix_linux
-  else
-    die "Unsupported OS: $(uname -s)"
+    ensure_home_manager_cli
+    ensure_linux_bash_integration
+
+    msg "Open a NEW terminal (or run: source ~/.bashrc) so PATH updates take effect."
   fi
 }
 
-enable_nix_features
-ensure_repo
+# -----------------
+# Argument parsing
+# -----------------
+USERNAME=""
+INSTALL_DIR="${HOME}/.base-tooling"
+DARWIN_TARGET="default"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --user)
+      USERNAME="$2"; shift 2;;
+    --dir)
+      INSTALL_DIR="$2"; shift 2;;
+    -h|--help)
+      usage; exit 0;;
+    *)
+      err "Unknown argument: $1"; usage; exit 1;;
+  esac
+done
+
+if [[ -z "$USERNAME" ]]; then
+  err "--user is required"; usage; exit 1
+fi
+
+msg "Base tooling install (Day-0) starting..."
+
+if is_darwin; then
+  msg "Detected OS: Darwin ($(arch))"
+else
+  msg "Detected OS: Linux ($(arch))"
+fi
+
+msg "Using user: $USERNAME"
+msg "Repo dir: $INSTALL_DIR"
+
+ensure_nix_installed
+ensure_nix_conf_flakes
+ensure_homebrew_darwin
+ensure_git
+
+# Clone/update repo (change this to your repo URL)
+REPO_URL="https://github.com/konradrenner/base-tooling"
+ensure_repo "$REPO_URL" "$INSTALL_DIR"
+
+# Platform-specific extras
+if ! is_darwin; then
+  install_rancher_desktop_linux_repo
+fi
+
 apply_configuration
 
 msg "Done."
