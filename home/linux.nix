@@ -1,18 +1,6 @@
 { config, pkgs, ... }:
 
-let
-  vscodeWayland = pkgs.symlinkJoin {
-    name = "vscode-wayland";
-    paths = [ pkgs.vscode ];
-    buildInputs = [ pkgs.makeWrapper ];
-    postBuild = ''
-      wrapProgram "$out/bin/code" \
-        --add-flags "--disable-setuid-sandbox" \
-        --add-flags "--enable-features=UseOzonePlatform" \
-        --add-flags "--ozone-platform=wayland"
-    '';
-  };
-in
+
 {
   programs.zsh = {
     enable = true;
@@ -24,6 +12,7 @@ in
 
     shellAliases = {
       netbeans = ''netbeans --userdir "$(pwd)/.netbeans" --fontsize 14 > /dev/null 2>&1 &'';
+      code = "code --no-sandbox --disable-setuid-sandbox --ozone-platform=wayland";
     };
 
     initContent = ''
@@ -34,25 +23,37 @@ in
       zstyle ':vcs_info:git:*' actionformats ' (%b|%a%u%c)'
       zstyle ':vcs_info:git:*' stagedstr '+'
       zstyle ':vcs_info:git:*' unstagedstr '*'
+      zstyle ':vcs_info:git:*' check-for-changes true
 
       setopt PROMPT_SUBST
       PROMPT='%F{green}%n@%m%f:%F{blue}%~%f%F{yellow}$vcs_info_msg_0_%f%(!.#.$) '
 
-      # Quarkus autocomplete
+      # --- Quarkus CLI completion (zsh) ---
       if command -v quarkus >/dev/null 2>&1; then
-        source <(quarkus completion zsh)
+        _q_cache_dir="''${XDG_CACHE_HOME:-$HOME/.cache}"
+        mkdir -p "$_q_cache_dir"
+        _q_comp_file="$_q_cache_dir/quarkus-completion.zsh"
+
+        if [ ! -s "$_q_comp_file" ]; then
+          _q_out="$(quarkus completion 2>/dev/null || true)"
+          if printf '%s\n' "$_q_out" | head -n1 | grep -q '^#compdef'; then
+            printf '%s\n' "$_q_out" > "$_q_comp_file"
+          fi
+        fi
+
+        [ -s "$_q_comp_file" ] && source "$_q_comp_file"
+        unset _q_cache_dir _q_comp_file _q_out
       fi
     '';
   };
 
-  programs.vscode = {
-    enable = true;
-    package = vscodeWayland;
-  };
+  home.packages = with pkgs; [
+    vscode-runner
+  ];
 
-  # optional, aber oft sinnvoll auf Wayland:
   home.sessionVariables = {
-    ELECTRON_OZONE_PLATFORM_HINT = "wayland";
+    ELECTRON_OZONE_PLATFORM_HINT = "auto";
+    NIXOS_OZONE_WL = "1";
   };
 
   programs.direnv = {

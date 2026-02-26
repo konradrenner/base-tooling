@@ -23,8 +23,6 @@ in
   programs.vscode = {
     enable = true;
 
-    package = pkgs.vscode;
-
     profiles.default.extensions = pkgs.nix4vscode.forVscode [
       "ms-vscode-remote.remote-containers"
       "asciidoctor.asciidoctor-vscode"
@@ -35,6 +33,7 @@ in
   };
 
   home.packages = with pkgs; [
+    vscode
     netbeans
     curl
     jq
@@ -47,6 +46,7 @@ in
     graalvmPackages.graalvm-ce
     spotify
     quarkus
+    jbang
     vlc
     gimp
   ];
