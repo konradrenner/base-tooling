@@ -53,41 +53,6 @@ ensure_nix_loaded() {
   require_cmd nix || err "nix not found. Install Nix first (install.sh), or open a new terminal."
 }
 
-ensure_linux_shell_integration() {
-  # ensures that future shells have nix + hm env without clobbering user's config
-  local nix_hook='/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
-  local hm_hook='$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh'
-
-  local block
-  block=$(
-    cat <<'EOF'
-# >>> base-tooling (nix + home-manager) >>>
-if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
-  . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
-fi
-if [ -e "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
-  . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
-fi
-# <<< base-tooling (nix + home-manager) <<<
-EOF
-  )
-
-  # Bash: login + interactive
-  for f in "$HOME/.profile" "$HOME/.bashrc"; do
-    touch "$f"
-    if ! grep -q 'base-tooling (nix + home-manager)' "$f"; then
-      printf "\n%s\n" "$block" >> "$f"
-    fi
-  done
-
-  # Zsh: login + interactive
-  for f in "$HOME/.zprofile" "$HOME/.zshrc"; do
-    touch "$f"
-    if ! grep -q 'base-tooling (nix + home-manager)' "$f"; then
-      printf "\n%s\n" "$block" >> "$f"
-    fi
-  done
-}
 
 update_repo() {
   msg "Updating repo..."
@@ -131,7 +96,6 @@ msg "Repo dir: ${INSTALL_DIR}"
 
 ensure_nix_loaded
 update_repo
-ensure_linux_shell_integration
 apply_configuration
 
 msg "Done."
