@@ -1,233 +1,194 @@
 #!/usr/bin/env bash
 set -euo pipefail
-trap 'echo "ERROR: update.sh failed at line $LINENO." >&2' ERR
 
-INSTALL_DIR="${HOME}/.base-tooling"
-DARWIN_TARGET="default"
-
-is_linux()  { [ "$(uname -s)" = "Linux" ]; }
-is_darwin() { [ "$(uname -s)" = "Darwin" ]; }
+# base-tooling update (Day-2)
+# - pulls latest repo (unless --no-pull)
+# - applies configuration (nix-darwin on macOS / Home Manager on Linux)
+# - on Linux: keeps zsh as default for your user
 
 msg() { printf "\n==> %s\n" "$*"; }
+warn() { printf "\nWARN: %s\n" "$*" >&2; }
+die() { printf "\nERROR: %s\n" "$*" >&2; exit 1; }
 
-require_cmd() {
-  local c="$1"
-  if ! command -v "$c" >/dev/null 2>&1; then
-    echo "ERROR: required command not found: $c" >&2
-    exit 1
-  fi
-}
+is_darwin() { [ "$(uname -s)" = "Darwin" ]; }
+is_linux()  { [ "$(uname -s)" = "Linux" ]; }
 
 require_sudo() {
-  require_cmd sudo
-  if ! sudo -n true 2>/dev/null; then
-    echo "Sudo privileges required. You may be prompted for your password."
-    sudo true
+  if sudo -n true 2>/dev/null; then
+    return
   fi
+  msg "Sudo privileges required. You may be prompted for your password."
+  sudo true
 }
 
 usage() {
-  cat <<'USAGE'
-Usage:
-  update.sh --user <username> [--update-rancher] [--no-pull] [--dir <path>]
+  cat <<'EOF'
+Usage: update.sh --user <name> [--dir <path>] [--no-pull]
 
-Required:
-  --user <username>     Local account name (e.g. koni)
-
-Optional:
-  --update-rancher      (Linux) Update Rancher Desktop to latest release (.deb/.rpm)
-  --no-pull             Do not run git pull (useful if you are on a local branch)
-  --dir <path>          Repo directory (default: ~/.base-tooling)
-
-Examples:
-  ~/.base-tooling/update.sh --user koni
-  ~/.base-tooling/update.sh --user koni --update-rancher
-USAGE
+Options:
+  --user <name>   Username used inside the flake (BASE_TOOLING_USER)
+  --dir  <path>   Repo directory (default: ~/.base-tooling)
+  --no-pull       Do not git pull/fetch/reset; only apply configuration
+EOF
 }
 
 USERNAME=""
-UPDATE_RANCHER=0
-NO_PULL=0
+INSTALL_DIR="${BASE_TOOLING_DIR:-$HOME/.base-tooling}"
+NO_PULL="false"
 
-parse_args() {
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --user)
-        shift
-        USERNAME="${1:-}"
-        shift
-        ;;
-      --update-rancher)
-        UPDATE_RANCHER=1
-        shift
-        ;;
-      --no-pull)
-        NO_PULL=1
-        shift
-        ;;
-      --dir)
-        shift
-        INSTALL_DIR="${1:-}"
-        shift
-        ;;
-      -h|--help)
-        usage
-        exit 0
-        ;;
-      *)
-        echo "Unknown option: $1" >&2
-        usage
-        exit 2
-        ;;
-    esac
-  done
+while [ "${1:-}" != "" ]; do
+  case "$1" in
+    --user) USERNAME="${2:-}"; shift 2;;
+    --dir)  INSTALL_DIR="${2:-}"; shift 2;;
+    --no-pull) NO_PULL="true"; shift 1;;
+    -h|--help) usage; exit 0;;
+    *) die "Unknown argument: $1";;
+  esac
+done
 
-  if [ -z "${USERNAME}" ]; then
-    echo "ERROR: --user is required." >&2
-    usage
-    exit 2
+[ -n "$USERNAME" ] || { usage; die "--user is required"; }
+
+ensure_repo_clean_or_no_pull() {
+  if [ "$NO_PULL" = "true" ]; then
+    return
+  fi
+  if [ ! -d "$INSTALL_DIR/.git" ]; then
+    die "Repo not found at $INSTALL_DIR. Run install.sh first."
+  fi
+  if ! git -C "$INSTALL_DIR" diff --quiet || ! git -C "$INSTALL_DIR" diff --cached --quiet; then
+    die "Working tree has uncommitted changes in $INSTALL_DIR. Commit/stash them, or re-run with --no-pull."
   fi
 }
 
-update_rancher_desktop_linux() {
-  if ! is_linux; then return 0; fi
+update_repo() {
+  if [ "$NO_PULL" = "true" ]; then
+    msg "Skipping repo update (--no-pull)."
+    return
+  fi
+  msg "Updating repo..."
+  git -C "$INSTALL_DIR" fetch --prune origin
+  git -C "$INSTALL_DIR" reset --hard origin/main
+  msg "Current branch main is up to date."
+}
 
-  if ! command -v rancher-desktop >/dev/null 2>&1; then
-    msg "Rancher Desktop not found; skipping update."
-    return 0
+ensure_nix_profile_add_wrapper() {
+  if ! is_linux; then
+    return
+  fi
+  if nix profile add --help >/dev/null 2>&1; then
+    return
   fi
 
-  local pkgtype=""
-  if command -v apt-get >/dev/null 2>&1; then
-    pkgtype="deb"
-  elif command -v dnf >/dev/null 2>&1 || command -v rpm >/dev/null 2>&1; then
-    pkgtype="rpm"
+  msg "Linux: Installing Nix compatibility wrapper for 'nix profile add' (idempotent)."
+  mkdir -p "$HOME/.local/bin"
+
+  local real_nix=""
+  if [ -x /nix/var/nix/profiles/default/bin/nix ]; then
+    real_nix="/nix/var/nix/profiles/default/bin/nix"
+  elif [ -x "$HOME/.nix-profile/bin/nix" ]; then
+    real_nix="$HOME/.nix-profile/bin/nix"
   else
-    msg "No supported package manager found (need apt or rpm). Skipping Rancher Desktop update."
-    return 0
+    real_nix="$(command -v nix || true)"
   fi
+  [ -n "$real_nix" ] && [ -x "$real_nix" ] || die "Could not find a working nix binary."
 
+  cat > "$HOME/.local/bin/nix" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+REAL_NIX="${real_nix}"
+
+if [ "\${#}" -ge 2 ] && [ "\${1}" = "profile" ] && [ "\${2}" = "add" ]; then
+  shift 2
+  exec "\$REAL_NIX" profile install "\$@"
+fi
+
+exec "\$REAL_NIX" "\$@"
+EOF
+  chmod +x "$HOME/.local/bin/nix"
+  export PATH="$HOME/.local/bin:$PATH"
+}
+
+ensure_home_manager_cli() {
+  if command -v home-manager >/dev/null 2>&1; then
+    return
+  fi
+  msg "Ensuring home-manager CLI is installed (nix profile install)."
+  ensure_nix_profile_add_wrapper
+  nix profile install \
+    --extra-experimental-features nix-command \
+    --extra-experimental-features flakes \
+    github:nix-community/home-manager
+}
+
+ensure_linux_zsh_system() {
+  if ! is_linux; then return; fi
+  if [ -x /usr/bin/zsh ]; then return; fi
+  msg "Linux: Installing system zsh (apt)..."
   require_sudo
-  require_cmd curl
+  sudo apt-get update -y
+  sudo apt-get install -y zsh
+}
 
-  local arch
-  arch="$(uname -m)"
-  case "$arch" in
-    x86_64) arch="x86_64" ;;
-    aarch64|arm64) arch="aarch64" ;;
-  esac
+set_default_shell_zsh() {
+  if ! is_linux; then return; fi
+  ensure_linux_zsh_system
 
-  msg "Checking latest Rancher Desktop release..."
-  local tag asset_url
-  tag="$(curl -fsSL https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest \
-    | grep -m1 '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')"
-
-  asset_url="$(curl -fsSL "https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/tags/${tag}" \
-    | grep -Eo 'https://[^"]+\.(deb|rpm)' \
-    | grep -E "${pkgtype}$" \
-    | grep -E "${arch}" \
-    | head -n1)"
-
-  if [ -z "$asset_url" ]; then
-    msg "Could not find matching ${pkgtype} asset for arch ${arch}. Skipping."
-    return 0
+  if ! grep -q '^/usr/bin/zsh$' /etc/shells 2>/dev/null; then
+    require_sudo
+    echo "/usr/bin/zsh" | sudo tee -a /etc/shells >/dev/null
   fi
 
-  local tmp pkg
-  tmp="$(mktemp -d)"
-  pkg="${tmp}/rancher-desktop.${pkgtype}"
-  curl -fsSL "$asset_url" -o "$pkg"
-
-  msg "Updating Rancher Desktop to ${tag}..."
-  if [ "$pkgtype" = "deb" ]; then
-    sudo apt-get update
-    sudo apt-get install -y "$pkg"
-  else
-    if command -v dnf >/dev/null 2>&1; then
-      sudo dnf install -y "$pkg"
-    else
-      sudo rpm -Uvh --replacepkgs "$pkg"
-    fi
+  local current_shell
+  current_shell="$(getent passwd "$USERNAME" | cut -d: -f7 || true)"
+  if [ "$current_shell" = "/usr/bin/zsh" ]; then
+    return
   fi
+
+  msg "Linux: Setting default shell for '$USERNAME' to /usr/bin/zsh"
+  require_sudo
+  sudo chsh -s /usr/bin/zsh "$USERNAME" || warn "Could not change shell automatically. Run: chsh -s /usr/bin/zsh"
 }
 
 apply_configuration() {
   msg "Applying declarative configuration..."
-  export BASE_TOOLING_USER="${USERNAME}"
+  export BASE_TOOLING_USER="$USERNAME"
 
   if is_darwin; then
     require_sudo
-    nix build --impure "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
-    sudo ./result/sw/bin/darwin-rebuild switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+    nix build --impure "${INSTALL_DIR}#darwinConfigurations.default.system"
+    sudo ./result/sw/bin/darwin-rebuild switch --impure --flake "${INSTALL_DIR}#default"
   else
-    # Home Manager (and some activation helpers) historically used
-    # `nix profile add`, but newer Nix versions removed the `add` subcommand
-    # (use `nix profile install` instead). If `add` is missing, we provide a
-    # tiny wrapper just for this run and point Home Manager to it.
-    local hm_env=()
-    if nix profile add --help >/dev/null 2>&1; then
-      : # OK
-    else
-      msg "Linux: enabling 'nix profile add' compatibility shim for this run."
-      local real_nix shim_dir
-      real_nix="$(command -v nix)"
-      shim_dir="$(mktemp -d)"
-      cat >"${shim_dir}/nix" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-REAL_NIX='${real_nix}'
-if [ "${1:-}" = "profile" ] && [ "${2:-}" = "add" ]; then
-  shift 2
-  exec "${real_nix}" profile install "$@"
-fi
-exec "${real_nix}" "$@"
-EOF
-      chmod +x "${shim_dir}/nix"
-      hm_env+=("NIX=${shim_dir}/nix" "NIX_BIN=${shim_dir}/nix" "HOME_MANAGER_NIX=${shim_dir}/nix" "PATH=${shim_dir}:$PATH")
-    fi
+    ensure_nix_profile_add_wrapper
+    ensure_home_manager_cli
 
-    env "${hm_env[@]}" nix run github:nix-community/home-manager -- \
+    msg "Starting Home Manager activation"
+    nix run \
+      --extra-experimental-features nix-command \
+      --extra-experimental-features flakes \
+      github:nix-community/home-manager -- \
       switch \
+      -b before-hm \
       --impure \
       --flake "${INSTALL_DIR}#${USERNAME}@linux"
+
+    set_default_shell_zsh
   fi
 }
 
 main() {
-  parse_args "$@"
-
   msg "Base tooling update (Day-2) starting..."
   msg "Detected OS: $(uname -s) ($(uname -m))"
-  msg "Using user: ${USERNAME}"
-  msg "Repo dir: ${INSTALL_DIR}"
+  msg "Using user: $USERNAME"
+  msg "Repo dir: $INSTALL_DIR"
 
-  if [ ! -d "${INSTALL_DIR}/.git" ]; then
-    echo "ERROR: Repo not found at ${INSTALL_DIR}." >&2
-    echo "Run install.sh first (Day-0)." >&2
-    exit 1
-  fi
-
-  require_cmd git
-
-  if [ "$NO_PULL" -eq 0 ]; then
-    msg "Updating repo..."
-    if [ -n "$(git -C "${INSTALL_DIR}" status --porcelain)" ]; then
-      echo "ERROR: Working tree has uncommitted changes in ${INSTALL_DIR}." >&2
-      echo "Commit/stash them, or re-run with --no-pull." >&2
-      exit 1
-    fi
-    git -C "${INSTALL_DIR}" pull --rebase
-  else
-    msg "Skipping git pull (--no-pull)."
-  fi
-
-  if [ "$UPDATE_RANCHER" -eq 1 ]; then
-    update_rancher_desktop_linux
-  fi
-
+  ensure_repo_clean_or_no_pull
+  update_repo
   apply_configuration
 
   msg "Done."
+  if is_linux; then
+    msg "Open a NEW terminal so your login shell (zsh) is used."
+  fi
 }
 
 main "$@"
