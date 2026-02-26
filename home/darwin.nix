@@ -9,6 +9,10 @@
 
     dotDir = config.home.homeDirectory;
 
+    shellAliases = {
+      netbeans = ''netbeans --userdir "$(pwd)/.netbeans" > /dev/null 2>&1 &'';
+    };
+
     initContent = ''
       autoload -Uz vcs_info
       precmd() { vcs_info }
@@ -20,6 +24,11 @@
 
       setopt PROMPT_SUBST
       PROMPT='%F{green}%n@%m%f:%F{blue}%~%f%F{yellow}$vcs_info_msg_0_%f%(!.#.$) '
+
+      # Quarkus autocomplete
+      if command -v quarkus >/dev/null 2>&1; then
+        source <(quarkus completion zsh)
+      fi
     '';
   };
 

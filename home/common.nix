@@ -43,5 +43,9 @@ in
     plantuml
     fontconfig
     graalvmPackages.graalvm-ce
+    spotify
+    quarkus
+    vlc
+    gimp
   ];
 }
