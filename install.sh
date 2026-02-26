@@ -44,6 +44,10 @@ ensure_sudo() {
   sudo -v
 }
 
+require_sudo() {
+  ensure_sudo
+}
+
 ensure_git() {
   if require_cmd git; then return; fi
   if is_darwin; then
