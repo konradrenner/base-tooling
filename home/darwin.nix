@@ -1,8 +1,6 @@
 { config, pkgs, ... }:
 
 {
-  xdg.enable = true;
-
   programs.zsh = {
     enable = true;
     enableCompletion = true;

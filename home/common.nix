@@ -7,6 +7,7 @@ let
     else /. + "/home/${username}";
 in
 {
+  xdg.enable = true;
   home.username = lib.mkForce username;
   home.homeDirectory = lib.mkForce homeDir;
 

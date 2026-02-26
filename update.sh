@@ -40,37 +40,23 @@ ensure_home_manager_cli() {
     github:nix-community/home-manager
 }
 
-ensure_linux_bash_integration() {
-  local snippet_dir="$HOME/.config/base-tooling"
-  local snippet_file="$snippet_dir/bashrc.snippet"
-  mkdir -p "$snippet_dir"
+ensure_linux_zsh() {
+  if ! command -v zsh >/dev/null 2>&1; then
+    log "Installing zsh..."
+    sudo apt-get update -y
+    sudo apt-get install -y zsh
+  fi
 
-  cat > "$snippet_file" <<'SNIPPET'
-# --- base-tooling (managed) ---
-if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
-  # shellcheck disable=SC1091
-  . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
-elif [ -e "$HOME/.nix-profile/etc/profile.d/nix.sh" ]; then
-  # shellcheck disable=SC1091
-  . "$HOME/.nix-profile/etc/profile.d/nix.sh"
-fi
+  local ZSH_PATH
+  ZSH_PATH="$(command -v zsh)"
 
-if [ -e "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
-  # shellcheck disable=SC1091
-  . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
-fi
-# --- /base-tooling (managed) ---
-SNIPPET
+  if ! grep -qxF "$ZSH_PATH" /etc/shells; then
+    echo "$ZSH_PATH" | sudo tee -a /etc/shells >/dev/null
+  fi
 
-  local bashrc="$HOME/.bashrc"
-  touch "$bashrc"
-  local marker="# base-tooling: source managed snippet"
-  if ! grep -Fq "$marker" "$bashrc"; then
-    {
-      echo
-      echo "$marker"
-      echo "[ -f \"$snippet_file\" ] && . \"$snippet_file\""
-    } >> "$bashrc"
+  if [ "$(getent passwd "$USERNAME" | cut -d: -f7)" != "$ZSH_PATH" ]; then
+    log "Setting zsh as default shell for $USERNAME"
+    sudo chsh -s "$ZSH_PATH" "$USERNAME"
   fi
 }
 
@@ -91,7 +77,7 @@ apply_configuration() {
       -b backup
 
     ensure_home_manager_cli
-    ensure_linux_bash_integration
+    ensure_linux_zsh
 
     msg "Linux: Open a NEW terminal (or run: source ~/.bashrc) so PATH updates take effect."
   fi

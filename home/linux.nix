@@ -1,8 +1,30 @@
 { config, pkgs, ... }:
 
 {
-  xdg.enable = true;
+  programs.zsh = {
+    enable = true;
+    enableCompletion = true;
+    autosuggestion.enable = true;
+    syntaxHighlighting.enable = true;
 
-  # i am ok with the defautls of bash on linux
-  #programs.bash.enable = true;
+    dotDir = config.home.homeDirectory;
+
+    initContent = ''
+      autoload -Uz vcs_info
+      precmd() { vcs_info }
+
+      zstyle ':vcs_info:git:*' formats ' (%b%u%c)'
+      zstyle ':vcs_info:git:*' actionformats ' (%b|%a%u%c)'
+      zstyle ':vcs_info:git:*' stagedstr '+'
+      zstyle ':vcs_info:git:*' unstagedstr '*'
+
+      setopt PROMPT_SUBST
+      PROMPT='%F{green}%n@%m%f:%F{blue}%~%f%F{yellow}$vcs_info_msg_0_%f%(!.#.$) '
+    '';
+  };
+
+  programs.direnv = {
+    enable = true;
+    nix-direnv.enable = true;
+  };
 }

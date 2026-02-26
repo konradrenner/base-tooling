@@ -23,7 +23,7 @@ Global base tooling (declarative):
 
 Container engine: *Rancher Desktop* (recommended for Dev Containers)
 * macOS: installed via nix-darwin Homebrew cask
-* Linux: installed from upstream .deb/.rpm release
+* Linux: installed from upstream .deb release (at the moment only .deb is supported)
 
 == Day-0: First installation (empty machine)
 
