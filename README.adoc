@@ -5,11 +5,13 @@ Declarative + versioned base developer workstation setup for *macOS (Apple Silic
 == What this installs/configures
 
 Global base tooling (declarative):
+
 * Nix + flakes enabled
 * Home Manager (Linux standalone)
 * nix-darwin + Home Manager (macOS)
 * direnv (+ nix-direnv)
 * git
+* some fun tools (Spotify, Gimp, VLC)
 * VS Code + extensions:
 ** Dev Containers
 ** AsciiDoc
@@ -22,6 +24,7 @@ Global base tooling (declarative):
 * GraalVM CE
 
 Container engine: *Rancher Desktop* (recommended for Dev Containers)
+
 * macOS: installed via nix-darwin Homebrew cask
 * Linux: installed from upstream .deb release (at the moment only .deb is supported)
 
@@ -35,6 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/inst
 ----
 
 This will:
+
 . Install Nix using the Determinate Systems installer (if missing)
 . Enable flakes
 . Install Rancher Desktop on Linux (if missing)
@@ -44,6 +48,7 @@ This will:
 .. Linux: +homeConfigurations.konrad@linux+
 
 After installation
+
 . Restart terminal.
 . Start Rancher Desktop once.
 . In Rancher Desktop settings select container engine +dockerd (moby)+ for best VS Code Dev Containers compatibility. (if you are using Linux on arm64 rancher desktop is not supported, you have to manually install e.g. podman)
@@ -60,12 +65,13 @@ Go to the local checkout and run the update script (default path is a hidden dir
 ----
 
 This will:
+
 * Pull the latest changes from the repository
 * Rebuild and activate the system configuration
 
 It does NOT update flake inputs automatically.
 
-### Updating Nix dependencies
+=== Updating Nix dependencies
 
 Updating `flake.lock` must be done manually and is reserved for "central rollout and testing" (would be done from a platform team in a production environment):
 

@@ -179,7 +179,7 @@ apply_configuration() {
     rm -f "$out" 2>/dev/null || true
 
     nix build --impure -L -o "$out" "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
-    sudo "$out/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+    sudo env BASE_TOOLING_USER="${USERNAME}" "$out/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
 
   elif is_linux; then
     # No installing home-manager CLI into a profile; just run it.
