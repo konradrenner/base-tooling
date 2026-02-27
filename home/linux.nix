@@ -46,6 +46,14 @@
     spotify
   ];
 
+  xdg.desktopEntries."code" = {
+    name = "Visual Studio Code";
+    exec = "${pkgs.vscode}/bin/code --no-sandbox %F";
+    icon = "${pkgs.vscode}/share/pixmaps/code.png";
+    terminal = false;
+    categories = [ "Development" "IDE" ];
+  };
+
   home.sessionVariables = {
     ELECTRON_OZONE_PLATFORM_HINT = "auto";
     NIXOS_OZONE_WL = "1";
