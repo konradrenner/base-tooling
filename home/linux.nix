@@ -49,7 +49,7 @@
   xdg.desktopEntries."code" = {
     name = "Visual Studio Code";
     exec = "${pkgs.vscode}/bin/code --no-sandbox %F";
-    icon = "${pkgs.vscode}/share/pixmaps/code.png";
+    icon = "vscode";
     terminal = false;
     categories = [ "Development" "IDE" ];
   };
