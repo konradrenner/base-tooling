@@ -34,7 +34,7 @@ Run **one command**:
 
 [source,bash]
 ----
-curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/install.sh | bash -s -- --user ABC
+curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/install.sh | bash -s -- --user <ABC>
 ----
 
 This will:
@@ -45,7 +45,7 @@ This will:
 . Clone this repo into ~/.base-tooling
 . Apply configuration using:
 .. macOS: +darwinConfigurations.default+
-.. Linux: +homeConfigurations.konrad@linux+
+.. Linux: +homeConfigurations.<ABC>@linux+
 
 After installation
 
@@ -61,7 +61,7 @@ Go to the local checkout and run the update script (default path is a hidden dir
 
 [source,bash]
 ----
-~/.base-tooling/update.sh --user ABC
+~/.base-tooling/update.sh --user <ABC>
 ----
 
 This will:
