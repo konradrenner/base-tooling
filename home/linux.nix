@@ -43,6 +43,7 @@
     vscode-runner
     vlc
     gimp
+    spotify
   ];
 
   home.sessionVariables = {

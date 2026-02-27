@@ -33,9 +33,10 @@
       upgrade = true;
       cleanup = "none";
     };
-
+    # spotify is no pkgs which can be built by nix and rancher - as a container engine - should also be installed natively
     casks = [
       "rancher"
+      "spotify"
     ];
   };
 
