@@ -54,6 +54,14 @@
     categories = [ "Development" "IDE" ];
   };
 
+  xdg.desktopEntries."netbeans" = {
+    name = "Netbeans";
+    exec = "${pkgs.netbeans}/bin/netbeans --fontsize 14";
+    icon = "netbeans";
+    terminal = false;
+    categories = [ "Development" "IDE" ];
+  };
+
   home.sessionVariables = {
     ELECTRON_OZONE_PLATFORM_HINT = "auto";
     NIXOS_OZONE_WL = "1";
