@@ -84,6 +84,17 @@ git push
 
 Therefore, just maintainers should update `flake.lock` locally, test it and then push it.
 
+=== Garbage Collection
+
+To link:https://nix.dev/manual/nix/2.26/package-management/garbage-collection[remove old or unused packages], you can just enter the following command, so that you free some space and get rid of unused or old stuff:
+
+[source,bash]
+----
+nix-collect-garbage -d
+----
+
+Therefore, just maintainers should update `flake.lock` locally, test it and then push it.
+
 == Troubleshooting
 
 === macOS: git not found
