@@ -20,25 +20,6 @@ in
     nix-direnv.enable = true;
   };
 
-  programs.vscode = {
-    enable = true;
-
-    profiles.default = {
-      userSettings = {
-        "window.titleBarStyle" = "native";
-      };
-    };
-
-    profiles.default.extensions = pkgs.nix4vscode.forVscode [
-      "ms-vscode-remote.remote-containers"
-      "asciidoctor.asciidoctor-vscode"
-      "jebbs.plantuml"
-      "alphabotsec.vscode-eclipse-keybindings"
-      "OleksandrHavrysh.intellij-formatter"
-      "jnoortheen.nix-ide"
-    ];
-  };
-
   home.packages = with pkgs; [
     vscode
     netbeans
