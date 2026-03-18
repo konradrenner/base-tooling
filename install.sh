@@ -6,7 +6,6 @@ err() { printf "\nERROR: %s\n" "$*" >&2; exit 1; }
 
 USERNAME=""
 GIT_NAME=""
-GIT_EMAIL=""
 INSTALL_DIR="${HOME}/.base-tooling"
 REPO_URL="https://github.com/konradrenner/base-tooling.git"
 NO_PULL="false"
@@ -15,9 +14,11 @@ DARWIN_TARGET="default"
 usage() {
   cat <<'USAGE'
 Usage:
-  install.sh --user <name> --git-name "Your Name" --git-email "you@example.com" [--dir <path>] [--no-pull] [--darwin-target <name>]
+  install.sh --user <name> [--git-name "Your Name"] [--dir <path>] [--no-pull] [--darwin-target <name>]
 
 Notes:
+- --git-name is required on the first run. It is written to ~/.gitconfig-identity and not needed again.
+- Git email is intentionally not set globally. Use: git config --local user.email "you@example.com"
 - Linux uses Home Manager standalone via: nix run github:nix-community/home-manager -- switch ...
 - macOS uses nix-darwin flake output.
 USAGE
@@ -27,7 +28,6 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --user) USERNAME="${2:-}"; shift 2 ;;
     --git-name) GIT_NAME="${2:-}"; shift 2 ;;
-    --git-email) GIT_EMAIL="${2:-}"; shift 2 ;;
     --dir) INSTALL_DIR="${2:-}"; shift 2 ;;
     --no-pull) NO_PULL="true"; shift ;;
     --darwin-target) DARWIN_TARGET="${2:-}"; shift 2 ;;
@@ -36,9 +36,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$USERNAME" ]]  || err "Missing --user <name>"
-[[ -n "$GIT_NAME" ]]  || err "Missing --git-name \"Your Name\""
-[[ -n "$GIT_EMAIL" ]] || err "Missing --git-email \"you@example.com\""
+[[ -n "$USERNAME" ]] || err "Missing --user <name>"
+
+GIT_IDENTITY_FILE="${HOME}/.gitconfig-identity"
+if [[ ! -f "$GIT_IDENTITY_FILE" ]]; then
+  [[ -n "$GIT_NAME" ]] || err "First run: --git-name \"Your Name\" is required to create ${GIT_IDENTITY_FILE}"
+fi
 
 is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
 is_linux() { [[ "$(uname -s)" == "Linux" ]]; }
@@ -137,6 +140,17 @@ ensure_linux_zsh_default() {
   fi
 }
 
+ensure_git_identity() {
+  if [[ -f "$GIT_IDENTITY_FILE" ]]; then
+    msg "Git identity already set at ${GIT_IDENTITY_FILE}, skipping."
+    return
+  fi
+  msg "Writing git identity to ${GIT_IDENTITY_FILE}..."
+  printf '[user]\n\tname = %s\n' "$GIT_NAME" > "$GIT_IDENTITY_FILE"
+  msg "Set git name: ${GIT_NAME}"
+  msg "Note: set email per repo with: git config --local user.email \"you@example.com\""
+}
+
 ensure_linux_shell_integration() {
   # ensures that future shells have nix + hm env without clobbering user's config
   local nix_hook='/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
@@ -176,8 +190,6 @@ EOF
 apply_configuration() {
   msg "Applying declarative configuration..."
   export BASE_TOOLING_USER="${USERNAME}"
-  export BASE_TOOLING_GIT_NAME="${GIT_NAME}"
-  export BASE_TOOLING_GIT_EMAIL="${GIT_EMAIL}"
 
   if is_darwin; then
     ensure_sudo
@@ -187,7 +199,7 @@ apply_configuration() {
     rm -f "$out" 2>/dev/null || true
 
     nix build --impure -L -o "$out" "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
-    sudo env BASE_TOOLING_USER="${USERNAME}" BASE_TOOLING_GIT_NAME="${GIT_NAME}" BASE_TOOLING_GIT_EMAIL="${GIT_EMAIL}" "$out/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+    sudo env BASE_TOOLING_USER="${USERNAME}" "$out/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
 
   elif is_linux; then
     # No installing home-manager CLI into a profile; just run it.
@@ -202,7 +214,7 @@ apply_configuration() {
 }
 
 msg "Base tooling install (Day-0) starting..."
-msg "Using user: ${USERNAME} <${GIT_EMAIL}>"
+msg "Using user: ${USERNAME}"
 msg "Repo dir: ${INSTALL_DIR}"
 
 if is_darwin; then msg "Detected OS: Darwin ($(uname -m))"; fi
@@ -211,6 +223,7 @@ if is_linux; then msg "Detected OS: Linux ($(uname -m))"; fi
 ensure_nix
 ensure_flakes
 ensure_repo
+ensure_git_identity
 ensure_linux_shell_integration
 apply_configuration
 ensure_linux_zsh_default

@@ -5,24 +5,6 @@ let
     if pkgs.stdenv.isDarwin
     then /. + "/Users/${username}"
     else /. + "/home/${username}";
-
-  gitName =
-    let n = builtins.getEnv "BASE_TOOLING_GIT_NAME";
-    in if n != "" then n else throw ''
-      BASE_TOOLING_GIT_NAME is not set.
-
-      Use install/update scripts with: --git-name "Your Name"
-      Or run nix with: BASE_TOOLING_GIT_NAME="Your Name" ... --impure
-    '';
-
-  gitEmail =
-    let e = builtins.getEnv "BASE_TOOLING_GIT_EMAIL";
-    in if e != "" then e else throw ''
-      BASE_TOOLING_GIT_EMAIL is not set.
-
-      Use install/update scripts with: --git-email "you@example.com"
-      Or run nix with: BASE_TOOLING_GIT_EMAIL="you@example.com" ... --impure
-    '';
 in
 {
   xdg.enable = true;
@@ -33,8 +15,10 @@ in
 
   programs.git = {
     enable = true;
-    userName = gitName;
-    userEmail = gitEmail;
+    # Name + email are not stored in this repo.
+    # install.sh writes ~/.gitconfig-identity once (name only).
+    # Email is set per-repo: git config --local user.email "you@example.com"
+    includes = [{ path = "~/.gitconfig-identity"; }];
   };
 
   programs.direnv = {

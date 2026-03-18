@@ -10,7 +10,7 @@ Global base tooling (declarative):
 * Home Manager (Linux standalone)
 * nix-darwin + Home Manager (macOS)
 * direnv (+ nix-direnv)
-* git (incl. user name + email, configured at install time)
+* git (user name configured once at install time via `~/.gitconfig-identity`; email is set per repo)
 * some fun tools (Spotify, Gimp, VLC)
 * VS Code + extensions:
 ** Dev Containers
@@ -36,8 +36,7 @@ Run **one command**:
 ----
 curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/install.sh | bash -s -- \
   --user <ABC> \
-  --git-name "Your Name" \
-  --git-email "you@example.com"
+  --git-name "Your Name"
 ----
 
 This will:
@@ -46,11 +45,12 @@ This will:
 . Enable flakes
 . Install Rancher Desktop on Linux (if missing)
 . Clone this repo into ~/.base-tooling
+. Write `~/.gitconfig-identity` with your git name (skipped if already present)
 . Apply configuration using:
 .. macOS: +darwinConfigurations.default+
 .. Linux: +homeConfigurations.<ABC>@linux+
 
-NOTE: `--git-name` and `--git-email` are required and are passed as environment variables to Nix at build time. They are never stored in the repository.
+NOTE: `--git-name` is only required on the first run. `~/.gitconfig-identity` is a local file, never stored in this repository. Git email is intentionally not set globally — configure it per repo with `git config --local user.email "you@example.com"`.
 
 After installation
 
@@ -66,10 +66,7 @@ Go to the local checkout and run the update script (default path is a hidden dir
 
 [source,bash]
 ----
-~/.base-tooling/update.sh \
-  --user <ABC> \
-  --git-name "Your Name" \
-  --git-email "you@example.com"
+~/.base-tooling/update.sh --user <ABC>
 ----
 
 This will:
