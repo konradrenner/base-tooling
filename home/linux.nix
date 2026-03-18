@@ -47,6 +47,15 @@
     categories = [ "Development" "IDE" ];
   };
 
+  xdg.desktopEntries."slack" = {
+    name = "Slack";
+    exec = "${pkgs.slack}/bin/slack --ozone-platform=x11 %U";
+    icon = "slack";
+    terminal = false;
+    categories = [ "Network" "InstantMessaging" ];
+    mimeType = [ "x-scheme-handler/slack" ];
+  };
+
   xdg.desktopEntries."spotify" = {
     name = "Spotify";
     exec = "${pkgs.spotify}/bin/spotify --ozone-platform=x11 %U";

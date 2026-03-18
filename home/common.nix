@@ -70,5 +70,6 @@ in
     graalvmPackages.graalvm-ce
     quarkus
     jbang
+    slack
   ];
 }
