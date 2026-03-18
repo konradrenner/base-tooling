@@ -31,7 +31,7 @@
     onActivation = {
       autoUpdate = true;
       upgrade = true;
-      cleanup = "none";
+      cleanup = "zap";
     };
     # spotify is no pkgs which can be built by nix and rancher - as a container engine - should also be installed natively
     casks = [

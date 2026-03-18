@@ -10,7 +10,7 @@ Global base tooling (declarative):
 * Home Manager (Linux standalone)
 * nix-darwin + Home Manager (macOS)
 * direnv (+ nix-direnv)
-* git
+* git (incl. user name + email, configured at install time)
 * some fun tools (Spotify, Gimp, VLC)
 * VS Code + extensions:
 ** Dev Containers
@@ -34,7 +34,10 @@ Run **one command**:
 
 [source,bash]
 ----
-curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/install.sh | bash -s -- --user <ABC>
+curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/install.sh | bash -s -- \
+  --user <ABC> \
+  --git-name "Your Name" \
+  --git-email "you@example.com"
 ----
 
 This will:
@@ -46,6 +49,8 @@ This will:
 . Apply configuration using:
 .. macOS: +darwinConfigurations.default+
 .. Linux: +homeConfigurations.<ABC>@linux+
+
+NOTE: `--git-name` and `--git-email` are required and are passed as environment variables to Nix at build time. They are never stored in the repository.
 
 After installation
 
@@ -61,7 +66,10 @@ Go to the local checkout and run the update script (default path is a hidden dir
 
 [source,bash]
 ----
-~/.base-tooling/update.sh --user <ABC>
+~/.base-tooling/update.sh \
+  --user <ABC> \
+  --git-name "Your Name" \
+  --git-email "you@example.com"
 ----
 
 This will:

@@ -5,6 +5,8 @@ msg() { printf "\n==> %s\n" "$*"; }
 err() { printf "\nERROR: %s\n" "$*" >&2; exit 1; }
 
 USERNAME=""
+GIT_NAME=""
+GIT_EMAIL=""
 INSTALL_DIR="${HOME}/.base-tooling"
 REPO_URL="https://github.com/konradrenner/base-tooling.git"
 NO_PULL="false"
@@ -13,7 +15,7 @@ DARWIN_TARGET="default"
 usage() {
   cat <<'USAGE'
 Usage:
-  install.sh --user <name> [--dir <path>] [--no-pull] [--darwin-target <name>]
+  install.sh --user <name> --git-name "Your Name" --git-email "you@example.com" [--dir <path>] [--no-pull] [--darwin-target <name>]
 
 Notes:
 - Linux uses Home Manager standalone via: nix run github:nix-community/home-manager -- switch ...
@@ -24,6 +26,8 @@ USAGE
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --user) USERNAME="${2:-}"; shift 2 ;;
+    --git-name) GIT_NAME="${2:-}"; shift 2 ;;
+    --git-email) GIT_EMAIL="${2:-}"; shift 2 ;;
     --dir) INSTALL_DIR="${2:-}"; shift 2 ;;
     --no-pull) NO_PULL="true"; shift ;;
     --darwin-target) DARWIN_TARGET="${2:-}"; shift 2 ;;
@@ -32,7 +36,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$USERNAME" ]] || err "Missing --user <name>"
+[[ -n "$USERNAME" ]]  || err "Missing --user <name>"
+[[ -n "$GIT_NAME" ]]  || err "Missing --git-name \"Your Name\""
+[[ -n "$GIT_EMAIL" ]] || err "Missing --git-email \"you@example.com\""
 
 is_darwin() { [[ "$(uname -s)" == "Darwin" ]]; }
 is_linux() { [[ "$(uname -s)" == "Linux" ]]; }
@@ -170,6 +176,8 @@ EOF
 apply_configuration() {
   msg "Applying declarative configuration..."
   export BASE_TOOLING_USER="${USERNAME}"
+  export BASE_TOOLING_GIT_NAME="${GIT_NAME}"
+  export BASE_TOOLING_GIT_EMAIL="${GIT_EMAIL}"
 
   if is_darwin; then
     ensure_sudo
@@ -179,7 +187,7 @@ apply_configuration() {
     rm -f "$out" 2>/dev/null || true
 
     nix build --impure -L -o "$out" "${INSTALL_DIR}#darwinConfigurations.${DARWIN_TARGET}.system"
-    sudo env BASE_TOOLING_USER="${USERNAME}" "$out/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
+    sudo env BASE_TOOLING_USER="${USERNAME}" BASE_TOOLING_GIT_NAME="${GIT_NAME}" BASE_TOOLING_GIT_EMAIL="${GIT_EMAIL}" "$out/sw/bin/darwin-rebuild" switch --impure --flake "${INSTALL_DIR}#${DARWIN_TARGET}"
 
   elif is_linux; then
     # No installing home-manager CLI into a profile; just run it.
@@ -194,7 +202,7 @@ apply_configuration() {
 }
 
 msg "Base tooling install (Day-0) starting..."
-msg "Using user: ${USERNAME}"
+msg "Using user: ${USERNAME} <${GIT_EMAIL}>"
 msg "Repo dir: ${INSTALL_DIR}"
 
 if is_darwin; then msg "Detected OS: Darwin ($(uname -m))"; fi

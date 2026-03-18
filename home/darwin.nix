@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 
 {
 
@@ -8,6 +8,7 @@
     profiles.default = {
       userSettings = {
         "workbench.startupEditor" = "none";
+        "update.showReleaseNotes" = false;
       };
     };
 
@@ -22,41 +23,22 @@
     ];
   };
 
+  # macOS-Aliases in ~/Applications erstellen, damit Spotlight VS Code findet
+  home.packages = with pkgs; [ mkalias ];
 
-  programs.zsh = {
-    enable = true;
-    enableCompletion = true;
-    autosuggestion.enable = true;
-    syntaxHighlighting.enable = true;
+  home.activation.linkApps = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    apps_dir="$HOME/Applications/Home Manager Apps"
+    $DRY_RUN_CMD rm -rf "$apps_dir"
+    $DRY_RUN_CMD mkdir -p "$apps_dir"
+    for app in "$HOME"/.nix-profile/Applications/*.app; do
+      [ -e "$app" ] || continue
+      real="$(readlink -f "$app")"
+      $DRY_RUN_CMD ${pkgs.mkalias}/bin/mkalias "$real" "$apps_dir/$(basename "$app")"
+    done
+  '';
 
-    dotDir = config.home.homeDirectory;
-
-    shellAliases = {
-      netbeans = ''netbeans --userdir "$(pwd)/.netbeans" > /dev/null 2>&1 &'';
-    };
-
-    initContent = ''
-      autoload -Uz vcs_info
-      precmd() { vcs_info }
-
-      zstyle ':vcs_info:git:*' formats ' (%b%u%c)'
-      zstyle ':vcs_info:git:*' actionformats ' (%b|%a%u%c)'
-      zstyle ':vcs_info:git:*' stagedstr '+'
-      zstyle ':vcs_info:git:*' unstagedstr '*'
-      zstyle ':vcs_info:git:*' check-for-changes true
-
-      setopt PROMPT_SUBST
-      PROMPT='%F{green}%n@%m%f:%F{blue}%~%f%F{yellow}$vcs_info_msg_0_%f%(!.#.$) '
-
-      # ---- Quarkus CLI completion----
-      if command -v quarkus >/dev/null 2>&1; then
-        autoload -Uz bashcompinit
-        bashcompinit
-
-        # Quarkus completion sometimes emits extra output -> keep it quiet
-        source <(quarkus completion 2>/dev/null)
-      fi
-    '';
+  programs.zsh.shellAliases = {
+    netbeans = ''netbeans --userdir "$(pwd)/.netbeans" > /dev/null 2>&1 &'';
   };
 
   home.sessionVariables = {
