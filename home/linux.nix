@@ -26,8 +26,6 @@
   programs.zsh.shellAliases = {
     netbeans = ''netbeans --userdir "$(pwd)/.netbeans" --fontsize 14 > /dev/null 2>&1 &'';
     code = "code --no-sandbox --disable-setuid-sandbox --ozone-platform=wayland";
-    docker = "podman";
-    docker-compose = "podman-compose";
   };
 
   home.packages = with pkgs; [
@@ -35,8 +33,10 @@
     vlc
     gimp
     spotify
-    podman
-    podman-compose
+    # Docker wird benötigt, da bestimmte Spezialsoftware (z.B. Winboat mit USB-Passthrough)
+    # nicht mit Podman kompatibel ist und zwingend Docker CE voraussetzt.
+    docker
+    docker-compose
   ];
 
   xdg.desktopEntries."code" = {
@@ -58,11 +58,12 @@
   home.sessionVariables = {
     ELECTRON_OZONE_PLATFORM_HINT = "auto";
     NIXOS_OZONE_WL = "1";
-    DOCKER_HOST = "unix://$XDG_RUNTIME_DIR/podman/podman.sock";
   };
 
-  # Global direnv stdlib – DOCKER_HOST auch in devenv-Shells gesetzt
+  # Global direnv stdlib – Docker-Socket auch in devenv-Shells verfügbar
+  # Docker wird benötigt, da bestimmte Spezialsoftware (z.B. Winboat mit USB-Passthrough)
+  # nicht mit Podman kompatibel ist und zwingend Docker CE voraussetzt.
   programs.direnv.stdlib = ''
-    export DOCKER_HOST="unix://''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
+    export DOCKER_HOST="unix:///var/run/docker.sock"
   '';
 }

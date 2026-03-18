@@ -117,6 +117,54 @@ ensure_repo() {
   fi
 }
 
+ensure_docker() {
+  # Docker wird benötigt, da bestimmte Spezialsoftware (z.B. Winboat mit USB-Passthrough)
+  # nicht mit Podman kompatibel ist und zwingend Docker CE voraussetzt.
+  if ! is_linux; then return; fi
+
+  if require_cmd docker; then
+    msg "Docker already installed, skipping."
+    return
+  fi
+
+  local distro
+  distro=$(. /etc/os-release && echo "$ID")
+  if [[ "$distro" != "ubuntu" && "$distro" != "debian" ]]; then
+    msg "Warning: unsupported Linux distribution '$distro' – Docker CE installation skipped."
+    return
+  fi
+
+  msg "Installing Docker CE from official Docker apt repository (distro: ${distro})..."
+  ensure_sudo
+
+  sudo apt-get update -y
+  sudo apt-get install -y ca-certificates curl
+
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL "https://download.docker.com/linux/${distro}/gpg" \
+    -o /etc/apt/keyrings/docker.asc
+  sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+  local codename
+  codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+https://download.docker.com/linux/${distro} ${codename} stable" \
+    | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+  sudo apt-get update -y
+  sudo apt-get install -y \
+    docker-ce \
+    docker-ce-cli \
+    containerd.io \
+    docker-buildx-plugin \
+    docker-compose-plugin
+
+  # Benutzer zur docker-Gruppe hinzufügen (kein sudo für docker-Befehle nötig)
+  sudo usermod -aG docker "${USERNAME}"
+  msg "User '${USERNAME}' added to 'docker' group. Re-login required for group membership to take effect."
+}
+
 ensure_linux_zsh_default() {
   # You want zsh as default on Linux for your user, but bash must remain.
   # IMPORTANT: chsh must point to a system shell listed in /etc/shells (NOT a nix store path).
@@ -225,6 +273,7 @@ ensure_flakes
 ensure_repo
 ensure_git_identity
 ensure_linux_shell_integration
+ensure_docker
 apply_configuration
 ensure_linux_zsh_default
 
