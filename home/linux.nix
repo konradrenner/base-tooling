@@ -27,7 +27,7 @@
     netbeans = ''netbeans --userdir "$(pwd)/.netbeans" --fontsize 14 > /dev/null 2>&1 &'';
     code = "code --no-sandbox --disable-setuid-sandbox --ozone-platform=wayland";
     slack = "slack --no-sandbox --ozone-platform=x11";
-    spotify = "spotify --no-sandbox --ozone-platform=x11";
+    spotify = "spotify --no-sandbox --disable-gpu --ozone-platform=x11";
   };
 
   home.packages = with pkgs; [
@@ -61,7 +61,7 @@
 
   xdg.desktopEntries."spotify" = {
     name = "Spotify";
-    exec = "${pkgs.spotify}/bin/spotify --no-sandbox --ozone-platform=x11 %U";
+    exec = "${pkgs.spotify}/bin/spotify --no-sandbox --disable-gpu --ozone-platform=x11 %U";
     icon = "spotify";
     terminal = false;
     categories = [ "Audio" "Music" "Player" "AudioVideo" ];
