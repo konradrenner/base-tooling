@@ -47,6 +47,15 @@
     categories = [ "Development" "IDE" ];
   };
 
+  xdg.desktopEntries."spotify" = {
+    name = "Spotify";
+    exec = "${pkgs.spotify}/bin/spotify --ozone-platform=x11 %U";
+    icon = "spotify";
+    terminal = false;
+    categories = [ "Audio" "Music" "Player" "AudioVideo" ];
+    mimeType = [ "x-scheme-handler/spotify" ];
+  };
+
   xdg.desktopEntries."netbeans" = {
     name = "Netbeans";
     exec = "${pkgs.netbeans}/bin/netbeans --fontsize 14";
