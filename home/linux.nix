@@ -27,6 +27,7 @@
     netbeans = ''netbeans --userdir "$(pwd)/.netbeans" --fontsize 14 > /dev/null 2>&1 &'';
     code = "code --no-sandbox --disable-setuid-sandbox --ozone-platform=wayland";
     slack = "slack --no-sandbox --ozone-platform=x11";
+    spotify = "spotify --no-sandbox --ozone-platform=x11";
   };
 
   home.packages = with pkgs; [
@@ -34,6 +35,7 @@
     vlc
     gimp
     spotify
+    slack
     # Docker wird benötigt, da bestimmte Spezialsoftware (z.B. Winboat mit USB-Passthrough)
     # nicht mit Podman kompatibel ist und zwingend Docker CE voraussetzt.
     docker
@@ -59,7 +61,7 @@
 
   xdg.desktopEntries."spotify" = {
     name = "Spotify";
-    exec = "${pkgs.spotify}/bin/spotify --ozone-platform=x11 %U";
+    exec = "${pkgs.spotify}/bin/spotify --no-sandbox --ozone-platform=x11 %U";
     icon = "spotify";
     terminal = false;
     categories = [ "Audio" "Music" "Player" "AudioVideo" ];

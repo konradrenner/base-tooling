@@ -33,9 +33,10 @@
       upgrade = true;
       cleanup = "zap";
     };
-    # spotify is no pkgs which can be built by nix and rancher - as a container engine - should also be installed natively
+    # GUI-Apps via Cask: landen in /Applications/, werden von Spotlight gefunden
     casks = [
       "rancher"
+      "slack"
       "spotify"
     ];
   };
