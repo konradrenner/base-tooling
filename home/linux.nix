@@ -26,6 +26,7 @@
   programs.zsh.shellAliases = {
     netbeans = ''netbeans --userdir "$(pwd)/.netbeans" --fontsize 14 > /dev/null 2>&1 &'';
     code = "code --no-sandbox --disable-setuid-sandbox --ozone-platform=wayland";
+    slack = "slack --no-sandbox --ozone-platform=x11";
   };
 
   home.packages = with pkgs; [
@@ -49,7 +50,7 @@
 
   xdg.desktopEntries."slack" = {
     name = "Slack";
-    exec = "${pkgs.slack}/bin/slack --ozone-platform=x11 %U";
+    exec = "${pkgs.slack}/bin/slack --no-sandbox --ozone-platform=x11 %U";
     icon = "slack";
     terminal = false;
     categories = [ "Network" "InstantMessaging" ];
