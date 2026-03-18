@@ -26,6 +26,8 @@
   programs.zsh.shellAliases = {
     netbeans = ''netbeans --userdir "$(pwd)/.netbeans" --fontsize 14 > /dev/null 2>&1 &'';
     code = "code --no-sandbox --disable-setuid-sandbox --ozone-platform=wayland";
+    docker = "podman";
+    docker-compose = "podman-compose";
   };
 
   home.packages = with pkgs; [
@@ -33,6 +35,8 @@
     vlc
     gimp
     spotify
+    podman
+    podman-compose
   ];
 
   xdg.desktopEntries."code" = {
@@ -54,5 +58,11 @@
   home.sessionVariables = {
     ELECTRON_OZONE_PLATFORM_HINT = "auto";
     NIXOS_OZONE_WL = "1";
+    DOCKER_HOST = "unix://$XDG_RUNTIME_DIR/podman/podman.sock";
   };
+
+  # Global direnv stdlib – DOCKER_HOST auch in devenv-Shells gesetzt
+  programs.direnv.stdlib = ''
+    export DOCKER_HOST="unix://''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
+  '';
 }

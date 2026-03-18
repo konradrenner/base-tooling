@@ -45,4 +45,12 @@
     CLICOLOR = "1";
     LSCOLORS = "GxFxCxDxBxegedabagaced";
   };
+
+  # Rancher Desktop CLI-Tools (docker, kubectl, ...) im PATH
+  home.sessionPath = [ "$HOME/.rd/bin" ];
+
+  # Global direnv stdlib – ~/.rd/bin auch in devenv-Shells verfügbar
+  programs.direnv.stdlib = ''
+    [ -d "$HOME/.rd/bin" ] && export PATH="$HOME/.rd/bin:$PATH"
+  '';
 }
