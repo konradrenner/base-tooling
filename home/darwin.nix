@@ -47,7 +47,7 @@
   };
 
   # Rancher Desktop CLI-Tools (docker, kubectl, ...) im PATH
-  home.sessionPath = [ "$HOME/.rd/bin" ];
+  home.sessionPath = [ "/opt/homebrew/bin" "/opt/homebrew/sbin" "$HOME/.rd/bin" ];
 
   # Global direnv stdlib – ~/.rd/bin auch in devenv-Shells verfügbar
   programs.direnv.stdlib = ''
