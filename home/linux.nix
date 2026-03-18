@@ -55,6 +55,22 @@
     categories = [ "Development" "IDE" ];
   };
 
+  # KDE Plasma sourcet dieses Verzeichnis vor dem Session-Start.
+  # Ohne dieses Script kennt KDE XDG_DATA_DIRS nicht und findet keine
+  # Nix-installierten Apps im Anwendungsstarter.
+  xdg.configFile."plasma-workspace/env/nix.sh" = {
+    executable = true;
+    text = ''
+      #!/bin/sh
+      if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+        . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+      fi
+      if [ -e "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
+        . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
+      fi
+    '';
+  };
+
   home.sessionVariables = {
     ELECTRON_OZONE_PLATFORM_HINT = "auto";
     NIXOS_OZONE_WL = "1";
