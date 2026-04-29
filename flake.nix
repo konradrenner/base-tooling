@@ -27,7 +27,12 @@
 
     mkPkgs = system: import nixpkgs {
       inherit system;
-      overlays = [ nix4vscode.overlays.default ];
+      overlays = [
+        nix4vscode.overlays.default
+        (final: prev: {
+          direnv = prev.direnv.overrideAttrs (_: { doCheck = false; });
+        })
+      ];
       config.allowUnfree = true;
     };
   in
