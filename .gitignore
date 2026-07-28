@@ -1,6 +1,137 @@
-# Ignore build outputs from performing a nix-build or `nix build` command
+# ---------------------------------------------------------------------------
+# Nix / Flakes
+# ---------------------------------------------------------------------------
+# WICHTIG: flake.lock und devenv.lock werden bewusst NICHT ignoriert -
+# sie muessen committet werden, damit die Config reproduzierbar bleibt.
+
+# Build-Ergebnisse (nix build / nix-build Symlinks in den Store)
 result
 result-*
+/result
+/result-*
 
-# Ignore automatically generated direnv output
+# nix repl / nix-shell / Build-Reste
+.nix-gc-roots
+repl-result-*
+*.drv
+
+# Logs fehlgeschlagener Builds
+nix-build.log
+*.nix.log
+
+# Lokale, nicht versionierte Overrides
+*.local.nix
+
+# ---------------------------------------------------------------------------
+# devenv
+# ---------------------------------------------------------------------------
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# von devenv generiert
+.pre-commit-config.yaml
+
+# ---------------------------------------------------------------------------
+# direnv
+# ---------------------------------------------------------------------------
 .direnv
+.direnv/
+.envrc.local
+
+# ---------------------------------------------------------------------------
+# Secrets
+# (agenix/sops-verschluesselte Dateien wie *.age oder *.enc.yaml
+#  bleiben absichtlich getrackt - nur Klartext/Private-Keys ignorieren)
+# ---------------------------------------------------------------------------
+*.pem
+*.key
+id_rsa
+id_ed25519
+keys.txt
+age-key.txt
+.secrets/
+secrets.local.nix
+*.decrypted
+*.dec.yaml
+*.dec.json
+.sops.local.yaml
+hashed_password*
+*.token
+
+# ---------------------------------------------------------------------------
+# Home-Manager / nix-darwin lokale Artefakte
+# ---------------------------------------------------------------------------
+# Backups, die home-manager beim Aktivieren anlegt
+*.hm-bak
+*.backup
+*.bak
+*.orig
+*.rej
+
+# ---------------------------------------------------------------------------
+# OS
+# ---------------------------------------------------------------------------
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.fseventsd
+.VolumeIcon.icns
+.apdisk
+
+# Linux
+*~
+.fuse_hidden*
+.Trash-*
+.nfs*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ---------------------------------------------------------------------------
+# Editoren / IDEs
+# ---------------------------------------------------------------------------
+# VS Code: geteilte Settings tracken, persoenliches ignorieren
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+.history/
+
+# JetBrains
+.idea/
+*.iml
+
+# Vim / Emacs / Helix
+*.swp
+*.swo
+*.swn
+.*.sw?
+Session.vim
+.netrwhist
+\#*\#
+.\#*
+*.elc
+.helix/
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+# Claude Code (lokale, maschinenspezifische Settings)
+.claude/settings.local.json
+.claude
+
+# Diverses
+*.log
+tmp/
+.tmp/
+.cache/
