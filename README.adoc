@@ -1,0 +1,204 @@
+= base-tooling
+
+Deklarative, versionierte Arbeitsplatz-Konfiguration für *TUXEDO OS* (Ubuntu-basiert, KDE Plasma) auf Notebook und Standpc.
+
+Ziel: nach einer Neuinstallation mit einem Befehl wieder arbeitsfähig sein, bei reproduzierbarer Umgebung und möglichst nativem App-Verhalten.
+
+== Grundidee: drei Layer
+
+TUXEDO OS bleibt das Basissystem, es wird also *kein NixOS*. Kernel und TUXEDO-Treiber bleiben bei apt. Darüber liegen drei Layer mit klarer Aufgabenteilung:
+
+[cols="1,2,1,1,2"]
+|===
+|Layer |Zuständig für |Deklariert in |Version gepinnt |Update kommt von
+
+|*Nix* (Home Manager)
+|Toolchain, CLI, Dotfiles, Plasma-Config
+|`flake.lock`
+|*Ja, bit-genau*
+|`nix flake update`, bewusst
+
+|*Flatpak*
+|GUI-Apps
+|`system/packages.nix`
+|Nein
+|nix-flatpak oder Discover
+
+|*apt*
+|Systemnahes, KDE-Stack, Browser
+|`system/packages.nix`
+|Nein
+|Discover / unattended-upgrades
+|===
+
+WICHTIG: Das Setup garantiert, *welche* Apps vorhanden sind — nicht in welcher Version. Ausgenommen ist der Nix-Layer. Damit ist genau der Teil gepinnt, bei dem Versionsdrift beim Entwickeln weh tut (GraalVM, Maven, Quarkus, jbang), und der Teil floatet, bei dem man Sicherheitsupdates *will*.
+
+=== Warum welcher Layer
+
+* *Flatpak* für GUI-Apps, die von Sandbox und Portals profitieren. Ersetzt die Homebrew-Casks des macOS-Pendants.
+* *apt* dort, wo es nativ sein muss: KDE-Stack (Kontact, digiKam), LibreOffice mit KDE-Frontend, KeePassXC wegen Browser-Native-Messaging, Nextcloud wegen Dolphin-Integration, Docker CE, Virtualisierung, VS Code.
+* *Nix* für alles andere. Bewusst *nicht* in Nix: `docker`, `freerdp`, `libreoffice`, `vlc`, `gimp`, `code` — eine Nix-Variante würde den apt-Client im PATH verschatten oder die Desktop-Integration brechen.
+
+== Day 0: Erstinstallation
+
+[source,bash]
+----
+curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/bootstrap.sh \
+  | bash -s -- --host notebook
+----
+
+`--host` ist optional. Ohne Angabe wird der Hostname der Maschine als Profil verwendet; mit Angabe wird der System-Hostname zusätzlich gesetzt — praktisch bei einer Frischinstallation, wo TUXEDO OS einen Default-Namen vergibt.
+
+Der Ablauf:
+
+. Nix installieren (Determinate Systems Installer), Flakes aktivieren
+. Repo nach `~/.base-tooling` klonen
+. Profil bestimmen und gegen die Profilliste im Flake prüfen
+. apt-Layer: Fremd-Repos und Keyrings, `apt install`, geprüftes `apt purge`, Gruppen `docker`/`libvirt`/`kvm`, zsh als Login-Shell
+. Home Manager anwenden: Nix-Pakete, zsh, git, Plasma-Config, Flatpaks
+. Ab- und wieder anmelden
+
+NOTE: Username und Home-Verzeichnis stehen *nicht* im Repo. Sie kommen über `$USER` und `$HOME` aus der Umgebung, weshalb `home-manager switch` mit `--impure` läuft. Die Paketauswahl bleibt davon unberührt und stammt vollständig aus `flake.lock` — unrein ist nur die Auswertung zweier Umgebungsvariablen, nicht das Ergebnis.
+
+=== Was von Hand bleibt
+
+* *Winboat* — nicht in einem apt-Repo, sondern als .deb-Release. Einmal von https://github.com/TibixDev/winboat herunterladen und mit `sudo apt install ./winboat-*-amd64.deb` installieren. Braucht Docker (kein Podman, kein rootless), KVM und FreeRDP 3 — alles über den apt-Layer vorhanden. Beim ersten Start lädt es das Windows-Image.
+* *Ancestris* — siehe unten.
+* Zugangsdaten: KeePassXC-Browser-Extension, Nextcloud-Login, Kontact-Konten.
+* Bei aktivem Secure Boot: nichts. Das war der Grund, VirtualBox durch `virt-manager` zu ersetzen — kein DKMS, kein MOK-Signieren.
+
+== Day 2: Änderungen anwenden
+
+[source,bash]
+----
+~/.base-tooling/sync.sh
+----
+
+Holt das Repo, gleicht den apt-Layer idempotent ab (neu Deklariertes wird installiert, neu auf die Purge-Liste Gesetztes entfernt) und wendet Home Manager an.
+
+=== Nix-Versionen aktualisieren
+
+Bewusst getrennt und nicht automatisch:
+
+[source,bash]
+----
+nix flake update
+git commit -am "flake inputs aktualisieren"
+git push
+# danach auf BEIDEN Maschinen: ~/.base-tooling/sync.sh
+----
+
+So bleiben die gepinnten Versionen auf Notebook und Standpc deckungsgleich.
+
+=== Zweite Maschine
+
+Derselbe Day-0-Befehl mit `--host desktop`.
+
+== Plasma-Konfiguration
+
+`programs.plasma.overrideConfig` steht auf *false*: die Config setzt einen deklarativen Boden, deine manuellen Änderungen in den Systemeinstellungen bleiben erhalten und werden von keinem `switch` weggeräumt.
+
+Aufteilung:
+
+* `plasma/common.nix` — portable Basis: Shortcuts, Konsole, Theming, Dolphin/Kate-Verhalten, Locale, kwallet
+* `plasma/notebook.nix`, `plasma/desktop.nix` — geräteabhängig: Skalierung, Libinput-Geräte-IDs, Maustasten-Rebinds
+
+Absichtlich *nicht* eingefroren: `kwinrc "Tiling/<UUID>"`, `Desktops.Id_*`, `kactivitymanagerdrc`. Die hängen an UUIDs, die KDE bei jeder Neuinstallation neu vergibt.
+
+=== Zurücksynchronisieren
+
+[source,bash]
+----
+~/.base-tooling/plasma-export.sh
+----
+
+Führt `rc2nix` aus, filtert Laufzeitmüll und Sensibles heraus und legt das Ergebnis zum Vergleich ab. Es schreibt *nichts* in `plasma/*.nix` — den Diff übernimmst du bewusst selbst.
+
+Der Filter entfernt unter anderem Kate-Such- und Ersetzungshistorien. Im ursprünglichen Export hatten die Projekt- und Servicenamen aus der Arbeit enthalten; das Skript warnt zusätzlich bei absoluten Home-Pfaden und verdächtigen Begriffen.
+
+== Terminal
+
+Konsole, konfiguriert über plasma-manager in `plasma/common.nix`, als Übersetzung der Ghostty-Config vom Mac: Dracula mit 60% Transparenz, JetBrainsMono Nerd Font 14, Balken-Cursor, Copy-on-Select, 110×32, Start in `~/code`.
+
+Nicht übertragen, weil Konsole keine Mehrtasten-Sequenzen kennt: die `alt+s>…`-Leader-Keybinds. Ebenfalls nicht: Ghosttys Shell-Integration — das Problem, das sie löst (`TERM=xterm-ghostty` fehlt in älteren terminfo-Datenbanken), entsteht bei Konsole nicht, weil es sich als `xterm-256color` meldet.
+
+Ghostty aus Nix wäre möglich, würde aber `nixGL` erfordern: GTK4-Programme aus nixpkgs finden auf einer Fremddistro die System-OpenGL-Treiber nicht. Bei NVIDIA-Proprietär muss der Wrapper zur Treiberversion passen und bricht bei Updates — das arbeitet gegen das Ziel dieses Repos.
+
+Die eigentliche Terminal-UX steckt ohnehin in zsh, nicht im Emulator: Powerlevel10k, oh-my-zsh, fzf-tab, Autosuggestions, Syntax-Highlighting, geteilte History. Das Prompt-Aussehen liegt als unveränderte Wizard-Ausgabe in `home/p10k.zsh`, damit es auf Mac und Linux identisch ist.
+
+== KDE Discover
+
+[cols="1,3"]
+|===
+|Layer |Verhalten
+
+|apt
+|Kein Konflikt. Die Liste ist additiv („stelle sicher, dass installiert"), keine Versionspins. Discover darf und soll apt-Pakete aktualisieren. Entfernst du dort etwas aus der Liste, installiert der nächste `sync.sh` es wieder.
+
+|Flatpak
+|`uninstallUnmanaged = false` — was du in Discover installierst, bleibt erhalten. Auf `true` würde jeder `switch` alles Nicht-Deklarierte entfernen; das ist korrekt, fühlt sich aber an, als arbeite die Maschine gegen dich.
+
+|Nix
+|Discover sieht den Layer nicht. Nix-Pakete erscheinen nie in der Update-Liste — dieser Layer bewegt sich nur, wenn du ihn bewegst.
+|===
+
+Kleines Ping-Pong: Discover kann anbieten, Thunderbird wieder zu installieren. Tust du das, purged der nächste `sync.sh` es erneut.
+
+Hängt eine gepurgte App an einem TUXEDO- oder Kubuntu-Metapaket, entfernt das Purgen auch dessen „installiert"-Markierung. Ein grosses Distro-Upgrade kann das Bundle dann erneut einziehen — selbstheilend, aber es erklärt, warum etwa `kmines` einmal zurückkommen könnte.
+
+== Purge-Liste mit Sicherheitsnetz
+
+`bootstrap.sh` und `sync.sh` fahren vor jedem Purge ein `apt-get purge --simulate` und *brechen ab*, falls apt mehr entfernen würde als in `system/packages.nix` deklariert. Kein `-y` ins Blaue. `autoremove` läuft absichtlich nicht automatisch, weil es diese Prüfung umgehen würde.
+
+Besonders relevant bei `imagemagick`: das Paket hat Bibliotheken drumherum. Global entfernt heisst nicht nie verfügbar — für Ad-hoc-Bildbearbeitung liefert devenv es projektweise aus Nix.
+
+== Ancestris
+
+Weder auf Flathub noch in nixpkgs, nur als AppImage. Statt es im Bootstrap irgendwo herunterzuladen, ist es eine reguläre Derivation mit gepinnter URL und Hash — damit genauso reproduzierbar wie alles andere.
+
+Einmalig einzurichten:
+
+[source,bash]
+----
+# 1. Aktuelle URL/Version in pkgs/ancestris.nix eintragen
+# 2. Hash ermitteln (der Build nennt ihn):
+nix build .#ancestris
+# 3. Hash in pkgs/ancestris.nix eintragen
+# 4. Die Zeile in home/common.nix einkommentieren
+----
+
+Bis dahin ist es in `home/common.nix` bewusst auskommentiert, damit ein Platzhalter-Hash nicht jeden `switch` scheitern lässt.
+
+== Struktur
+
+....
+flake.nix                     Multi-Host-Outputs, apt-Listen als Datenausgaben
+home/
+  common.nix                  Nix-Pakete, zsh/p10k/oh-my-zsh, git, direnv, Fonts
+  linux.nix                   Flatpak, Plasma-Env-Hook, Session-Variablen
+  p10k.zsh                    Prompt-Aussehen (Wizard-Ausgabe, unverändert)
+  hosts/notebook.nix
+  hosts/desktop.nix
+plasma/
+  common.nix                  Portable Plasma-Basis inkl. Konsole
+  dracula.colorscheme         Konsole-Farbschema mit Opacity 0.6
+  notebook.nix                Skalierung, Touchpad, Maustasten
+  desktop.nix                 Noch leer, siehe Kommentar in der Datei
+pkgs/ancestris.nix            AppImage-Derivation
+system/
+  packages.nix                apt-install, apt-purge, Flatpak-Liste
+  repos.nix                   Fremd-apt-Repos als Shell-Blöcke
+lib/system.sh                 Gemeinsame Funktionen der Skripte
+bootstrap.sh                  Day 0
+sync.sh                       Day 2
+plasma-export.sh              Plasma zurück ins Repo
+....
+
+Die apt- und Flatpak-Listen leben als reine Daten in `system/packages.nix` und werden von den Skripten über `nix eval --raw .#aptInstall` gelesen — eine Quelle der Wahrheit, dasselbe Prinzip wie das generierte Brewfile unter nix-darwin.
+
+== Garbage Collection
+
+[source,bash]
+----
+nix-collect-garbage -d
+----
