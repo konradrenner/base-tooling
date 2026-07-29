@@ -6,6 +6,47 @@ Deklarative, versionierte Arbeitsplatz-Konfiguration für *TUXEDO OS* (Ubuntu-ba
 
 Ziel: nach einer Neuinstallation mit einem Befehl wieder arbeitsfähig sein, bei reproduzierbarer Umgebung und möglichst nativem App-Verhalten.
 
+== TL;DR
+
+[source,bash]
+----
+# ── Day 0: frisches TUXEDO OS ────────────────────────────────────────
+# Ein Befehl, ohne Argumente. Die Bauform wird selbst erkannt.
+curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/bootstrap.sh | bash
+# danach einmal ab- und wieder anmelden
+
+# ── Day 2: Änderungen anwenden ───────────────────────────────────────
+# Holt das Repo, gleicht apt/Flatpak/Nix ab, räumt Flatpak-Runtimes auf
+~/.base-tooling/sync.sh
+
+# ── Paket ergänzen oder entfernen ────────────────────────────────────
+cd ~/.base-tooling
+$EDITOR home/common.nix        # Nix-Pakete
+$EDITOR system/packages.nix    # apt- und Flatpak-Listen
+./sync.sh --no-pull            # lokal testen
+git commit -am "paket xy" && git push
+
+# ── Nix-Versionen aktualisieren (bewusst getrennt) ───────────────────
+cd ~/.base-tooling && nix flake update && ./sync.sh --no-pull
+git commit -am "flake inputs aktualisieren" && git push
+# danach am anderen Gerät: ~/.base-tooling/sync.sh
+
+# ── Plasma-Änderungen zurück ins Repo ────────────────────────────────
+~/.base-tooling/plasma-export.sh
+
+# ── Zurückrollen ─────────────────────────────────────────────────────
+cd ~/.base-tooling && git checkout <commit> && ./sync.sh --no-pull
+
+# ── Grosses Aufräumen (Flatpak erledigt sync.sh selbst) ──────────────
+nix-collect-garbage --dry-run -d          # zuerst lesen
+nix-collect-garbage -d
+sudo apt autoremove --purge --simulate    # zuerst lesen
+----
+
+Schalter für beide Skripte: `--no-pull` (lokalen Stand anwenden), `--skip-apt` (nur Nix und Plasma), `--profile notebook` bzw. `--profile desktop` (Bauform-Erkennung übersteuern). Nur `bootstrap.sh`: `--dir <pfad>`. Nur `sync.sh`: `--skip-flatpak-gc`.
+
+Details: <<day0,Day 0>>, <<day2,Day 2>>, <<profile,Profile>>, <<aufraeumen,Aufräumen>>.
+
 == Grundidee: drei Layer
 
 TUXEDO OS bleibt das Basissystem, es wird also *kein NixOS*. Kernel und TUXEDO-Treiber bleiben bei apt. Darüber liegen drei Layer mit klarer Aufgabenteilung:
@@ -41,6 +82,7 @@ WICHTIG: Das Setup garantiert, *welche* Apps vorhanden sind — nicht in welcher
 * *apt* dort, wo es nativ sein muss: KDE-Stack (Kontact, digiKam), LibreOffice mit KDE-Frontend, KeePassXC wegen Browser-Native-Messaging, Nextcloud wegen Dolphin-Integration, Docker CE, Virtualisierung, VS Code.
 * *Nix* für alles andere. Bewusst *nicht* in Nix: `docker`, `freerdp`, `libreoffice`, `vlc`, `gimp`, `code` — eine Nix-Variante würde den apt-Client im PATH verschatten oder die Desktop-Integration brechen. `bootstrap.sh` und `sync.sh` warnen, wenn ein Paketname in zwei Layern auftaucht.
 
+[[day0]]
 == Day 0: Erstinstallation
 
 Voraussetzung: frisch installiertes TUXEDO OS, ein Benutzerkonto mit sudo-Rechten, Internetverbindung.
@@ -112,6 +154,7 @@ Voraussetzungen (Docker CE, KVM, FreeRDP 3) deckt der apt-Layer ab. Podman und r
 * *Ancestris* — siehe <<ancestris,eigener Abschnitt>>.
 * *Zugangsdaten* — KeePassXC-Browser-Extension, Nextcloud-Login, Kontact-Konten.
 
+[[day2]]
 == Day 2: Änderungen anwenden
 
 [source,bash]
