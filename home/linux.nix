@@ -7,8 +7,7 @@ in
   imports = [ ../plasma/common.nix ];
 
   # ── Flatpak ─────────────────────────────────────────────────────────
-  # Das Analogon zu homebrew.casks unter nix-darwin: additive App-Schicht,
-  # deklarierte Menge, Versionen floaten.
+  # Additive App-Schicht: die Menge ist deklariert, die Versionen floaten.
   #
   # uninstallUnmanaged = false ist Absicht und folgt derselben Philosophie
   # wie overrideConfig = false bei Plasma: deklarativer Boden, manuell

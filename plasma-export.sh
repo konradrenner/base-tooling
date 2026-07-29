@@ -47,11 +47,11 @@ if [ -n "$LEFTOVER" ]; then
 $LEFTOVER"
 fi
 
-# Grober Hinweisgeber auf Arbeits- oder Projektnamen, die im letzten Export
-# über die Kate-Suchhistorie mitgekommen waren.
+# Grober Hinweisgeber auf Projektnamen. Solche Werte kommen typischerweise
+# über Such- und Ersetzungshistorien in den Export.
 SUSPECT="$(grep -niE 'service|projekt|project|kunde|client|intern' "$CLEAN" || true)"
 if [ -n "$SUSPECT" ]; then
-  warn "Verdächtig (könnten Projekt- oder Arbeitsbezüge sein), bitte durchsehen:
+  warn "Verdächtig (könnten Projektbezüge sein), bitte durchsehen:
 
 $SUSPECT"
 fi

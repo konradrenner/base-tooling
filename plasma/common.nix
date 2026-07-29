@@ -8,8 +8,7 @@
 #                            selbst wieder an.
 #   * dataFile / Kate-Sessions - enthielten offene Dateien aus ~/Downloads
 #   * Kate-Such- und Ersetzungshistorie - enthielt Projekt- und Servicenamen
-#                            aus der Arbeit
-#   * katefilebrowser location - Arbeitspfad
+#   * katefilebrowser location - absoluter Projektpfad
 #   * spectaclerc Speicherpfade, plasmarc usersWallpapers - private Fotopfade
 #   * plasmanotifyrc "Seen"-Flags, dolphinrc ViewPropsTimestamp,
 #     dolphinrc ExtractDialog-Fenstergrößen - reiner Laufzeitzustand
@@ -21,8 +20,9 @@
 
 {
   # ── Konsole ─────────────────────────────────────────────────────────
-  # Übersetzung der Ghostty-Config vom Mac. Jede Zeile mit ihrem Original
-  # kommentiert, damit die beiden Seiten nachvollziehbar synchron bleiben.
+  # Übersetzung einer Ghostty-Config. Jede Zeile ist mit ihrer
+  # Ghostty-Entsprechung kommentiert, damit nachvollziehbar bleibt,
+  # woher der Wert kommt.
   #
   # Achtung: programs.konsole ist eine Top-Level-Option von plasma-manager,
   # NICHT unter programs.plasma verschachtelt.

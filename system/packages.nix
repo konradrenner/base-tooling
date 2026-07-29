@@ -1,9 +1,8 @@
 # Paketlisten für die Layer, die Nix nicht verwaltet.
 #
-# Das ist das Gegenstück zum generierten Brewfile unter nix-darwin: reine
-# Daten, die von bootstrap.sh und sync.sh über
+# Reine Daten, die von bootstrap.sh und sync.sh über
 #   nix eval --raw .#aptInstall
-# gelesen werden. Eine Quelle der Wahrheit.
+# gelesen werden. Eine Quelle der Wahrheit für beide Skripte.
 #
 # Layer-Regeln:
 #   apt     - systemnah, Kernel-/Treibernähe, KDE-Stack, Browser-Integration

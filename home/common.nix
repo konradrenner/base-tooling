@@ -22,7 +22,7 @@
   # gimp, vscode. Die kommen aus apt bzw. Flatpak; eine Nix-Variante würde
   # den apt-Client im PATH überschatten oder die Desktop-Integration brechen.
   home.packages = with pkgs; [
-    # Toolchain (entspricht der Extra-Liste vom Mac)
+    # Java-Toolchain
     curl
     jq
     graalvmPackages.graalvm-ce
@@ -30,7 +30,7 @@
     maven
     quarkus
 
-    # Basis, die am Mac aus der Firmen-Config kommt und hier fehlen würde
+    # Allgemeines Werkzeug
     git
     gh
     devenv
@@ -60,7 +60,7 @@
     enable = true;
     # Email absichtlich nicht global: pro Repo setzen mit
     #   git config --local user.email "you@example.com"
-    extraConfig = {
+    settings = {
       init.defaultBranch = "main";
       pull.ff = "only";
     };
@@ -73,20 +73,24 @@
   };
 
   # ── fzf ─────────────────────────────────────────────────────────────
-  # Liefert die `fzf --zsh`-Integration, wie am Mac.
+  # Liefert die `fzf --zsh`-Integration.
   programs.fzf = {
     enable = true;
     enableZshIntegration = true;
   };
 
   # ── zsh ─────────────────────────────────────────────────────────────
-  # Spiegelt die Mac-Config, minus alles Firmenspezifische:
-  # kein cmdlib/~/.library, kein brew shellenv, kein Rancher-PATH,
-  # keine Transfer-Server-Funktionen, keine ^t/^f/^e-Keybindings.
+  # Prompt: Powerlevel10k. Ergänzt um fzf-tab, Autosuggestions und
+  # Syntax-Highlighting. Tastenkombinationen werden bewusst nicht gesetzt.
   programs.zsh = {
     enable = true;
     enableCompletion = true;
     autocd = true;
+
+    # Ab Home Manager 26.05 wechselt der Default auf $XDG_CONFIG_HOME/zsh.
+    # Hier bewusst festgenagelt auf ~/.zshrc — das ist der Ort, an dem man
+    # die Datei erwartet, und passt zur Login-Shell-Einrichtung.
+    dotDir = config.home.homeDirectory;
 
     autosuggestion = {
       enable = true;
@@ -111,8 +115,6 @@
 
     oh-my-zsh = {
       enable = true;
-      # Mac hatte: git sudo kubectl helm docker terraform
-      # kubectl/helm/terraform sind Firmenzutat und hier raus.
       plugins = [ "git" "sudo" "docker" ];
     };
 
@@ -130,7 +132,7 @@
     ];
 
     shellAliases = {
-      # eza als ls-Ersatz, identisch zum Mac
+      # eza als ls-Ersatz
       ls = "eza --icons=always --git --classify --show-symlinks --group-directories-first -m";
       ll = "ls --long --header --all --sort modified";
       la = "ll";
@@ -144,8 +146,8 @@
       # Von Home Manager nicht als Option abgedeckt
       setopt HIST_FCNTL_LOCK
 
-      # Prompt-Aussehen: unveränderte Wizard-Ausgabe vom Mac,
-      # damit das Prompt auf beiden Systemen identisch ist.
+      # Prompt-Aussehen: Ausgabe von `p10k configure`, unverändert
+      # eingecheckt in home/p10k.zsh.
       [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
     '';
   };
