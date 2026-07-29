@@ -59,8 +59,24 @@ secrets.local.nix
 hashed_password*
 *.token
 
+# Umgebungsdateien und Credentials
+# (bewusst NICHT: secrets.yaml - das ist bei sops der verschluesselte Name)
+.env
+.env.*
+!.env.example
+.netrc
+creds*.json
+credentials*.json
+service-account*.json
+*.p12
+*.pfx
+*.jks
+*.keystore
+.aws/
+.kube/config
+
 # ---------------------------------------------------------------------------
-# Home-Manager / nix-darwin lokale Artefakte
+# Home-Manager lokale Artefakte
 # ---------------------------------------------------------------------------
 # Backups, die home-manager beim Aktivieren anlegt
 *.hm-bak

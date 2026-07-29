@@ -4,8 +4,8 @@
 #
 # Bewusst NICHT übernommen:
 #   * khotkeysrc komplett  - die KDE-Beispielgesten, alle deaktiviert und mit
-#                            kaputtem Encoding ("DrÃ¼cken"). KDE legt Defaults
-#                            selbst wieder an.
+#                            fehlerhaft kodierten Umlauten. KDE legt die
+#                            Defaults selbst wieder an.
 #   * dataFile / Kate-Sessions - enthielten offene Dateien aus ~/Downloads
 #   * Kate-Such- und Ersetzungshistorie - enthielt Projekt- und Servicenamen
 #   * katefilebrowser location - absoluter Projektpfad
