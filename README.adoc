@@ -8,44 +8,98 @@ Ziel: nach einer Neuinstallation mit einem Befehl wieder arbeitsfähig sein, bei
 
 == TL;DR
 
+=== Day 0 — frisch installiertes TUXEDO OS
+
+Ein Befehl, ohne Argumente. Die Bauform wird selbst erkannt.
+
 [source,bash]
 ----
-# ── Day 0: frisches TUXEDO OS ────────────────────────────────────────
-# Ein Befehl, ohne Argumente. Die Bauform wird selbst erkannt.
 curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/bootstrap.sh | bash
-# danach einmal ab- und wieder anmelden
-
-# ── Day 2: Änderungen anwenden ───────────────────────────────────────
-# Holt das Repo, gleicht apt/Flatpak/Nix ab, räumt Flatpak-Runtimes auf
-~/.base-tooling/sync.sh
-
-# ── Paket ergänzen oder entfernen ────────────────────────────────────
-cd ~/.base-tooling
-$EDITOR home/common.nix        # Nix-Pakete
-$EDITOR system/packages.nix    # apt- und Flatpak-Listen
-./sync.sh --no-pull            # lokal testen
-git commit -am "paket xy" && git push
-
-# ── Nix-Versionen aktualisieren (bewusst getrennt) ───────────────────
-cd ~/.base-tooling && nix flake update && ./sync.sh --no-pull
-git commit -am "flake inputs aktualisieren" && git push
-# danach am anderen Gerät: ~/.base-tooling/sync.sh
-
-# ── Plasma-Änderungen zurück ins Repo ────────────────────────────────
-~/.base-tooling/plasma-export.sh
-
-# ── Zurückrollen ─────────────────────────────────────────────────────
-cd ~/.base-tooling && git checkout <commit> && ./sync.sh --no-pull
-
-# ── Grosses Aufräumen (Flatpak erledigt sync.sh selbst) ──────────────
-nix-collect-garbage --dry-run -d          # zuerst lesen
-nix-collect-garbage -d
-sudo apt autoremove --purge --simulate    # zuerst lesen
 ----
 
-Schalter für beide Skripte: `--no-pull` (lokalen Stand anwenden), `--skip-apt` (nur Nix und Plasma), `--profile notebook` bzw. `--profile desktop` (Bauform-Erkennung übersteuern). Nur `bootstrap.sh`: `--dir <pfad>`. Nur `sync.sh`: `--skip-flatpak-gc`.
+Danach **einmal ab- und wieder anmelden**. Ausführlich: <<day0,Day 0>>.
 
-Details: <<day0,Day 0>>, <<day2,Day 2>>, <<profile,Profile>>, <<aufraeumen,Aufräumen>>.
+=== Day 2 — Änderungen anwenden
+
+Holt das Repo, gleicht apt, Flatpak und Nix ab, räumt ungenutzte Flatpak-Runtimes auf:
+
+[source,bash]
+----
+~/.base-tooling/sync.sh
+----
+
+Paket ergänzen oder entfernen — `home/common.nix` für Nix, `system/packages.nix` für apt und Flatpak:
+
+[source,bash]
+----
+cd ~/.base-tooling
+$EDITOR home/common.nix
+./sync.sh --no-pull                            # lokal testen
+git commit -am "paket xy" && git push          # dann am anderen Gerät: ./sync.sh
+----
+
+Nix-Versionen aktualisieren — bewusst von `sync.sh` getrennt:
+
+[source,bash]
+----
+cd ~/.base-tooling && nix flake update && ./sync.sh --no-pull
+git commit -am "flake inputs aktualisieren" && git push
+----
+
+Ausführlich: <<day2,Day 2>>.
+
+=== Gelegentlich
+
+Plasma-Änderungen zurück ins Repo holen:
+
+[source,bash]
+----
+~/.base-tooling/plasma-export.sh
+----
+
+Auf einen früheren Stand zurückrollen:
+
+[source,bash]
+----
+cd ~/.base-tooling && git checkout <commit> && ./sync.sh --no-pull
+----
+
+Grosses Aufräumen. Flatpak erledigt `sync.sh` selbst, diese beiden bewusst nicht — erst die Simulation lesen, dann ohne den Schalter wiederholen:
+
+[source,bash]
+----
+nix-collect-garbage --dry-run -d
+sudo apt autoremove --purge --simulate
+----
+
+Ausführlich: <<aufraeumen,Aufräumen>>.
+
+=== Schalter
+
+[cols="1,1,3"]
+|===
+|Schalter |Skript |Wirkung
+
+|`--no-pull`
+|beide
+|Nicht vom Remote holen, lokalen Stand anwenden
+
+|`--skip-apt`
+|beide
+|Nur Nix und Plasma, apt-Layer überspringen
+
+|`--profile notebook` / `desktop`
+|beide
+|Bauform-Erkennung übersteuern, siehe <<profile,Profile>>
+
+|`--dir <pfad>`
+|`bootstrap.sh`
+|Anderes Zielverzeichnis als `~/.base-tooling`
+
+|`--skip-flatpak-gc`
+|`sync.sh`
+|Ungenutzte Flatpak-Runtimes nicht entfernen
+|===
 
 == Grundidee: drei Layer
 
