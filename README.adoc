@@ -133,17 +133,23 @@ Voraussetzungen (Docker CE, KVM, FreeRDP 3) deckt der apt-Layer ab. Podman und r
 
 |`--skip-apt`
 |Nur Nix und Plasma anwenden, apt-Layer überspringen.
+
+|`--skip-flatpak-gc`
+|Ungenutzte Flatpak-Runtimes nicht entfernen. Sinnvoll bei schmaler Leitung: ein entferntes Runtime wird beim nächsten Bedarf neu geladen, und das sind leicht mehrere Gigabyte.
 |===
 
 === Was sync.sh tut
 
 . `git pull --ff-only` im Repo (ausser bei `--no-pull`)
-. Profil bestimmen und gegen die Profilliste prüfen
+. Profil aus der Bauform bestimmen und gegen die Profilliste prüfen
 . Layer-Überlappung prüfen
 . apt-Layer idempotent abgleichen: Repos, `install`, geprüfter `purge`, Gruppen, Login-Shell
-. Home Manager anwenden
+. Home Manager anwenden — Nix-Pakete, Dotfiles, Plasma, Flatpaks
+. Ungenutzte Flatpak-Runtimes entfernen
 
 Neu deklarierte Pakete werden installiert, neu auf die Purge-Liste gesetzte entfernt. Mehrfaches Ausführen ist gefahrlos.
+
+Schritt 6 läuft bewusst *nach* Schritt 5: erst ist der deklarierte Flatpak-Stand angewandt, danach steht fest, welche Runtimes wirklich niemand mehr braucht. Details unter <<aufraeumen,Aufräumen>>.
 
 `sync.sh` aktualisiert *keine* Nix-Versionen — das ist Absicht, siehe nächster Abschnitt.
 
@@ -262,14 +268,27 @@ nix store gc --dry-run  # vorher ansehen
 
 Nach dem Aufräumen kann der erste `sync.sh` länger dauern, weil Zwischenergebnisse neu geholt werden.
 
-=== Flatpak
+=== Flatpak — läuft automatisch bei jedem sync.sh
 
-Ungenutzte Runtimes und SDKs summieren sich schnell auf mehrere Gigabyte:
+Ungenutzte Runtimes und SDKs summieren sich schnell auf mehrere Gigabyte, deshalb erledigt `sync.sh` das selbst:
 
 [source,bash]
 ----
-flatpak uninstall --unused
+flatpak uninstall --user --unused --noninteractive
 ----
+
+Hauptquelle des Zuwachses sind Runtime-Versionswechsel: aktualisiert eine App auf ein neueres Runtime, bleibt das alte als ungenutzt zurück. Genau das wird eingesammelt.
+
+Gezielt `--user`, weil nix-flatpak als Home-Manager-Modul die user-Installation verwaltet. Die *system*-Installation — etwa was Discover dort ablegt — bleibt unberührt, denn dieses Repo verwaltet sie nicht. Bei Bedarf von Hand:
+
+[source,bash]
+----
+sudo flatpak uninstall --system --unused
+----
+
+Abschalten mit `--skip-flatpak-gc`.
+
+NOTE: Weil `uninstallUnmanaged = false` gesetzt ist, bleibt eine App, die du aus `system/packages.nix` entfernst, installiert — sie ist danach nur nicht mehr verwaltet. Ihr Runtime gilt damit weiter als benutzt. Willst du eine App tatsächlich loswerden, deinstalliere sie einmal von Hand oder über Discover; das Aufräumen holt ihr Runtime dann beim nächsten `sync.sh`.
 
 === apt
 
@@ -281,14 +300,38 @@ sudo apt autoremove --purge --simulate    # zuerst lesen!
 sudo apt autoremove --purge
 ----
 
-=== Alles auf einmal
+=== Warum die drei Layer unterschiedlich behandelt werden
+
+Das sieht inkonsequent aus, ist es aber nicht — die Risikoprofile unterscheiden sich wirklich:
+
+[cols="1,1,3"]
+|===
+|Layer |Bei jedem sync.sh |Begründung
+
+|Flatpak
+|*Ja, automatisch*
+|`--unused` fasst per Definition nur Refs an, die von keiner installierten App gebraucht werden, und wirkt ausschliesslich innerhalb der Flatpak-Welt. Es kann weder eine App noch das System brechen. Einziger Preis: ein später wieder benötigtes Runtime muss neu geladen werden.
+
+|apt
+|Nein, nur manuell
+|`apt autoremove` kennt Kernel, Treiber und den halben Desktop. Ein falscher Aufruf zerlegt das System, und es würde die `--simulate`-Prüfung des Purge-Schritts umgehen.
+
+|Nix
+|Nein, nur manuell
+|`nix-collect-garbage -d` löscht alte Generationen und damit den Rollback-Weg. Das ist eine bewusste Entscheidung mit echtem Preis, kein Aufräumen im Vorbeigehen.
+|===
+
+=== Grosses Aufräumen von Hand
 
 [source,bash]
 ----
+nix-collect-garbage --dry-run -d          # zuerst lesen
 nix-collect-garbage -d
-flatpak uninstall --unused
-sudo apt autoremove --purge --simulate    # Ausgabe prüfen, dann ohne --simulate
+sudo apt autoremove --purge --simulate    # zuerst lesen
+sudo apt autoremove --purge
 ----
+
+Flatpak ist bereits erledigt, falls `sync.sh` gelaufen ist.
 
 == Purge-Liste mit Sicherheitsnetz
 

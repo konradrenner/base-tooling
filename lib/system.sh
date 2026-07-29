@@ -180,6 +180,52 @@ Wenn das so gewollt ist, trage die Pakete dort mit ein."
 Falls gewünscht, prüfe manuell mit: sudo apt-get autoremove --purge --simulate"
 }
 
+# ── Flatpak aufräumen ───────────────────────────────────────────────
+# Entfernt Runtimes und Extensions, die von keiner installierten Anwendung
+# mehr referenziert werden.
+#
+# Warum das hier automatisch läuft, `apt autoremove` aber nicht: die
+# Risikoprofile sind verschieden. apt kennt Kernel, Treiber und den halben
+# Desktop, ein falsches autoremove zerlegt das System — deshalb dort nur
+# manuell und simuliert. `flatpak uninstall --unused` wirkt ausschliesslich
+# innerhalb der Flatpak-Welt und fasst per Definition nur Refs an, die von
+# keiner installierten App gebraucht werden. Es kann weder eine App noch
+# das System brechen.
+#
+# Hauptquelle des Zuwachses sind Runtime-Versionswechsel: aktualisiert eine
+# App auf ein neueres Runtime, bleibt das alte als ungenutzt zurück. Genau
+# das wird hier eingesammelt.
+#
+# Gezielt --user, weil nix-flatpak als home-manager-Modul die
+# user-Installation verwaltet. Die system-Installation (z.B. was Discover
+# dort ablegt) bleibt unberührt — das räumt dieses Skript nicht auf, weil es
+# sie auch nicht verwaltet.
+#
+# Einen --dry-run kennt `flatpak uninstall` nicht, daher wird die Ausgabe
+# mitgeschrieben und gemeldet.
+flatpak_gc() {
+  if ! require_cmd flatpak; then
+    warn "flatpak nicht im PATH — Aufräumen übersprungen."
+    return 0
+  fi
+
+  msg "Ungenutzte Flatpak-Runtimes entfernen (user-Installation)"
+
+  local out
+  if ! out="$(flatpak uninstall --user --unused --noninteractive 2>&1)"; then
+    # Aufräumen ist Kür, kein Grund den Lauf abzubrechen.
+    warn "flatpak uninstall --unused ist fehlgeschlagen, wird ignoriert:
+${out}"
+    return 0
+  fi
+
+  if [ -n "${out//[[:space:]]/}" ]; then
+    printf "%s\n" "$out"
+  else
+    msg "Nichts zu entfernen."
+  fi
+}
+
 # ── Gruppen und Login-Shell ─────────────────────────────────────────
 ensure_groups() {
   local user="$1" g
