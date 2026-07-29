@@ -1,10 +1,11 @@
 { config, pkgs, lib, ... }:
 
-# Maschinenspezifische Plasma-Einstellungen für den Standpc.
+# Plasma-Einstellungen für die Bauform "desktop": kein Touchpad, kein
+# internes Display. Gilt auch für virtuelle Maschinen.
 #
-# Noch leer: für dieses Gerät liegt kein rc2nix-Export vor. Nach dem ersten
-# Einrichten mit plasma-export.sh exportieren und die gerätespezifischen
-# Blöcke hier eintragen — typischerweise:
+# Noch leer, und in vielen Fällen bleibt das auch so — ohne Touchpad und
+# ohne internes Panel gibt es kaum Bauform-Abhängiges. Nach dem Einrichten
+# mit plasma-export.sh exportieren und eintragen, falls nötig:
 #
 #   kdeglobals.KScreen.ScaleFactor        = 1.0;
 #   kdeglobals.KScreen.ScreenScaleFactors = "DP-1=1;HDMI-A-1=1;";

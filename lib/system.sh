@@ -13,6 +13,83 @@ ensure_sudo() {
   sudo -v
 }
 
+# ── Profil-Erkennung ────────────────────────────────────────────────
+# Ein Profil beschreibt ausschliesslich die Hardware-Bauform:
+#   notebook - hat Touchpad und internes Display mit eigener Skalierung
+#   desktop  - hat beides nicht (gilt auch für VMs)
+#
+# Der Hostname spielt dabei bewusst keine Rolle und wird von diesen
+# Skripten nie verändert. Er ist Sache des Systems.
+#
+# Gibt den Profilnamen aus, oder eine leere Zeichenkette, wenn die Bauform
+# nicht bestimmbar ist. Dann muss --profile explizit mitgegeben werden.
+detect_profile() {
+  local chassis=""
+
+  # DMI-Chassis-Typ ist die verlässlichste Quelle. Mögliche Werte:
+  # desktop, laptop, convertible, tablet, handset, server, vm, container, ...
+  if require_cmd hostnamectl; then
+    chassis="$(hostnamectl chassis 2>/dev/null || true)"
+  fi
+
+  # Fallback ohne systemd-Auskunft: ein Akku bedeutet mobiles Gerät.
+  if [ -z "$chassis" ]; then
+    if compgen -G "/sys/class/power_supply/BAT*" > /dev/null 2>&1; then
+      chassis="laptop"
+    fi
+  fi
+
+  case "$chassis" in
+    laptop | convertible | tablet | handset) echo "notebook" ;;
+    desktop | server | vm | container) echo "desktop" ;;
+    *) echo "" ;;
+  esac
+}
+
+# Profil bestimmen und gegen die Liste im Flake prüfen.
+# Setzt die globale Variable PROFILE. Verändert nichts am System.
+resolve_profile() {
+  local repo="$1" explicit="${2:-}"
+  local known source
+
+  known="$(nix eval --raw "${repo}#profileList")"
+
+  if [ -n "$explicit" ]; then
+    PROFILE="$explicit"
+    source="explizit über --profile"
+  else
+    PROFILE="$(detect_profile)"
+    source="aus der Bauform erkannt"
+    if [ -z "$PROFILE" ]; then
+      err "Die Hardware-Bauform liess sich nicht bestimmen.
+
+Bekannte Profile: ${known}
+
+Bitte explizit angeben, zum Beispiel:
+    --profile desktop
+
+Es wurde nichts verändert."
+    fi
+  fi
+
+  case " ${known} " in
+    *" ${PROFILE} "*)
+      msg "Profil: ${PROFILE} (${source})"
+      ;;
+    *)
+      err "Kein Profil namens '${PROFILE}'.
+Bekannte Profile: ${known}
+
+Es wurde nichts verändert.
+
+Ein neues Profil braucht drei Stellen:
+    1. home/profiles/${PROFILE}.nix
+    2. plasma/${PROFILE}.nix
+    3. in flake.nix bei 'profiles' den Namen ergänzen"
+      ;;
+  esac
+}
+
 # ── Layer-Prüfung ───────────────────────────────────────────────────
 # apt und Flatpak müssen disjunkt sein, sonst gibt es doppelte
 # Startmenü-Einträge oder verschattete Binaries im PATH.
@@ -157,13 +234,13 @@ ensure_zsh_login_shell() {
 # in den Flake kommen (siehe flake.nix). Die Paketauswahl bleibt davon
 # unberührt und stammt vollständig aus flake.lock.
 hm_switch() {
-  local repo="$1" host="$2"
-  local out="${TMPDIR:-/tmp}/base-tooling-hm-${host}"
+  local repo="$1" profile="$2"
+  local out="${TMPDIR:-/tmp}/base-tooling-hm-${profile}"
 
-  msg "Home-Manager-Konfiguration bauen (Profil: ${host})"
+  msg "Home-Manager-Konfiguration bauen (Profil: ${profile})"
   nix build --impure -L \
     -o "$out" \
-    "${repo}#homeConfigurations.${host}.activationPackage"
+    "${repo}#homeConfigurations.${profile}.activationPackage"
 
   msg "Aktivieren"
   HOME_MANAGER_BACKUP_EXT=hm-bak "${out}/activate"

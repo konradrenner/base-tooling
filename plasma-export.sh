@@ -67,6 +67,7 @@ Nächster Schritt — Diff gegen die bestehende Basis, dann selektiv übernehmen
   diff <(grep -oE '^\s+[a-zA-Z0-9."/ _-]+ =' "$CLEAN" | sort) \\
        <(grep -oE '^\s+[a-zA-Z0-9."/ _-]+ =' "$(dirname "\$0")/plasma/common.nix" | sort)
 
-Geräteabhängiges gehört nach plasma/\$(hostname -s).nix, nicht nach
-plasma/common.nix: Skalierung, Libinput-Geräte-IDs, Maustasten-Rebinds.
+Bauform-Abhängiges gehört nach plasma/notebook.nix bzw. plasma/desktop.nix,
+nicht nach plasma/common.nix: Skalierung, Libinput-Geräte-IDs,
+Maustasten-Rebinds.
 EOF

@@ -50,10 +50,10 @@ Voraussetzung: frisch installiertes TUXEDO OS, ein Benutzerkonto mit sudo-Rechte
 [source,bash]
 ----
 curl -fsSL https://raw.githubusercontent.com/konradrenner/base-tooling/main/bootstrap.sh \
-  | bash -s -- --host notebook
+  | bash
 ----
 
-Am zweiten Gerät identisch, nur mit `--host desktop`.
+Auf jedem Gerät derselbe Befehl, ohne Argumente. Das Skript erkennt die Bauform selbst.
 
 === Optionen von bootstrap.sh
 
@@ -61,8 +61,8 @@ Am zweiten Gerät identisch, nur mit `--host desktop`.
 |===
 |Option |Wirkung
 
-|`--host <name>`
-|Profil wählen (`notebook` oder `desktop`). Ohne Angabe wird der Hostname der Maschine verwendet. *Mit* Angabe wird der System-Hostname zusätzlich per `hostnamectl` auf diesen Wert gesetzt — praktisch bei einer Frischinstallation, wo TUXEDO OS einen Default-Namen vergibt. Bei einem unbekannten Namen bricht das Skript ab, *bevor* es den Hostname anfasst, und nennt die bekannten Profile. Gross- und Kleinschreibung wird unterschieden.
+|`--profile <name>`
+|Bauform-Profil erzwingen (`notebook` oder `desktop`). Normalerweise nicht nötig — die Bauform wird automatisch erkannt. Nur angeben, wenn die Erkennung fehlschlägt oder man sie übersteuern will. Unbekannter Name bricht ab, ohne etwas zu verändern.
 
 |`--dir <pfad>`
 |Zielverzeichnis des Repos. Default `~/.base-tooling`.
@@ -80,7 +80,7 @@ Am zweiten Gerät identisch, nur mit `--host desktop`.
 . *Nix installieren* über den Determinate-Systems-Installer, falls nicht vorhanden. Danach wird `nix-daemon.sh` in die laufende Shell gesourct, damit `nix` sofort verfügbar ist (nötig bei `curl | bash`).
 . *Flakes aktivieren* — `experimental-features = nix-command flakes` in `~/.config/nix/nix.conf`, idempotent.
 . *Repo klonen* nach `~/.base-tooling`. Ist es schon da, wird `git pull --ff-only` gemacht (ausser bei `--no-pull`).
-. *Profil bestimmen* — aus `--host` oder dem Hostname, und gegen die Profilliste im Flake geprüft. Unbekanntes Profil bricht mit Hinweis ab, statt eine falsche Config anzuwenden.
+. *Profil bestimmen* — aus der Bauform erkannt oder aus `--profile` übernommen, und gegen die Profilliste im Flake geprüft. Unbekanntes Profil bricht mit Hinweis ab, statt eine falsche Config anzuwenden.
 . *Layer-Prüfung* — warnt, wenn ein Paketname sowohl in der apt- als auch in der Flatpak-Liste steht.
 . *apt-Layer* (entfällt bei `--skip-apt`):
 .. Fremd-Repos und Keyrings einrichten (Docker, VS Code, Chrome), idempotent
@@ -125,8 +125,8 @@ Voraussetzungen (Docker CE, KVM, FreeRDP 3) deckt der apt-Layer ab. Podman und r
 |===
 |Option |Wirkung
 
-|`--host <name>`
-|Profil überschreiben. Default ist der Hostname der Maschine.
+|`--profile <name>`
+|Bauform-Profil erzwingen. Ohne Angabe wird die Bauform automatisch erkannt.
 
 |`--no-pull`
 |Nicht vom Remote holen — wendet den lokalen Stand an. Für lokales Ausprobieren von Änderungen.
@@ -320,7 +320,7 @@ Führt `rc2nix` aus, filtert Laufzeitzustand und Sensibles heraus und legt das E
 
 Der Filter entfernt unter anderem Such- und Ersetzungshistorien, in denen Projektnamen landen. Zusätzlich warnt das Skript bei absoluten Home-Pfaden und verdächtigen Begriffen.
 
-Geräteabhängiges gehört nach `plasma/$(hostname -s).nix`, nicht nach `plasma/common.nix`.
+Bauform-Abhängiges gehört nach `plasma/notebook.nix` bzw. `plasma/desktop.nix`, alles andere nach `plasma/common.nix`. Siehe <<profile,Profile>>.
 
 == Terminal
 
@@ -351,45 +351,75 @@ nix build .#ancestris
 
 Bis dahin ist es in `home/common.nix` bewusst auskommentiert, damit der Platzhalter-Hash nicht jeden `switch` scheitern lässt.
 
-== Benutzername und Hostname
+[[profile]]
+== Profile: ausschliesslich eine Frage der Bauform
 
-Beides steht *nicht* im Repo:
+Es gibt genau zwei Profile, und der einzige Grund für ihre Existenz ist Hardware:
 
-* *Benutzername und Home* kommen über `$USER` und `$HOME` aus der Umgebung. Deshalb läuft der Build mit `--impure`. Die Paketauswahl bleibt davon unberührt und stammt vollständig aus `flake.lock` — unrein ist nur die Auswertung zweier Umgebungsvariablen, nicht das Ergebnis.
-* *Der Hostname* wird automatisch erkannt und wählt das Profil. `--host` überschreibt und setzt zusätzlich den System-Hostname.
+[cols="1,3"]
+|===
+|Profil |Gilt für
 
-=== Neues Gerät oder Profil hinzufügen
+|`notebook`
+|Geräte mit Touchpad und internem Display, das eine eigene Skalierung braucht
 
-Drei Stellen:
+|`desktop`
+|Geräte ohne beides — auch virtuelle Maschinen
+|===
 
-. `home/hosts/<name>.nix` anlegen (an `home/hosts/desktop.nix` orientieren)
-. `plasma/<name>.nix` anlegen (an `plasma/desktop.nix` orientieren)
-. In `flake.nix` bei `hosts` den Namen ergänzen
+Alles andere ist in `home/common.nix`, `home/linux.nix` und `plasma/common.nix` gemeinsam und gilt überall gleich. Konkret unterscheiden sich die Profile nur in `plasma/notebook.nix`: Display-Skalierung, Libinput-Einstellungen des Touchpads und Maustasten-Rebinds. `plasma/desktop.nix` ist leer und bleibt es voraussichtlich auch.
 
-Der Hostname der Maschine muss dem Profilnamen entsprechen, oder man gibt ihn per `--host` mit.
+=== Der Hostname spielt keine Rolle
 
-=== In einer Test-VM ausprobieren
+Das Profil hat *nichts* mit dem Hostnamen zu tun. Der Hostname ist Sache des Systems: `bootstrap.sh` und `sync.sh` lesen ihn nicht und verändern ihn nicht.
 
-Zum Testen des Setups in einer VM braucht es normalerweise *kein* eigenes Profil — einfach ein bestehendes verwenden:
+Die Bauform wird stattdessen an der Hardware erkannt, über den DMI-Chassis-Typ:
+
+[cols="1,1"]
+|===
+|`hostnamectl chassis` |Profil
+
+|`laptop`, `convertible`, `tablet`, `handset`
+|`notebook`
+
+|`desktop`, `server`, `vm`, `container`
+|`desktop`
+|===
+
+Liefert `hostnamectl` keine Auskunft, greift ein Fallback: existiert ein Akku unter `/sys/class/power_supply/BAT*`, gilt das Gerät als mobil. Lässt sich die Bauform auch so nicht bestimmen, bricht das Skript ab und bittet um `--profile` — es rät nicht.
+
+Damit ist auf allen Geräten derselbe Aufruf ohne Argumente korrekt, und eine VM bekommt automatisch das `desktop`-Profil.
+
+=== Übersteuern
 
 [source,bash]
 ----
-curl -fsSL .../bootstrap.sh | bash -s -- --host desktop
+./sync.sh --profile desktop     # z.B. um am Notebook ohne Touchpad-Werte zu testen
 ----
 
-`desktop` passt für eine VM besser als `notebook`, weil dort keine Notebook-Skalierung und keine Touchpad-Einstellungen gesetzt werden. Ein eigenes `testvm`-Profil lohnt sich nur, wenn man VM-spezifische Einstellungen dauerhaft festhalten will.
+=== Ein weiteres Profil anlegen
+
+Nur nötig, wenn eine *dritte Bauform* hinzukommt. Zwei Notebooks oder zwei Standrechner teilen sich jeweils ein Profil — das ist gewollt, weil die Bauform gleich ist. Falls doch nötig, drei Stellen:
+
+. `home/profiles/<name>.nix` anlegen (an `home/profiles/desktop.nix` orientieren)
+. `plasma/<name>.nix` anlegen (an `plasma/desktop.nix` orientieren)
+. In `flake.nix` bei `profiles` den Namen ergänzen
+
+== Benutzername
+
+Steht ebenfalls *nicht* im Repo. Benutzername und Home kommen über `$USER` und `$HOME` aus der Umgebung. Deshalb läuft der Build mit `--impure`. Die Paketauswahl bleibt davon unberührt und stammt vollständig aus `flake.lock` — unrein ist nur die Auswertung zweier Umgebungsvariablen, nicht das Ergebnis.
 
 == Struktur
 
 ....
-flake.nix                     Multi-Host-Outputs, apt-Listen als Datenausgaben
+flake.nix                     Profil-Outputs, apt-Listen als Datenausgaben
 flake.lock                    Gepinnte Nix-Versionen (wird committet)
 home/
   common.nix                  Nix-Pakete, zsh, git, direnv, Fonts
   linux.nix                   Flatpak, Plasma-Env-Hook, Session-Variablen
   p10k.zsh                    Prompt-Aussehen (p10k configure, unveraendert)
-  hosts/notebook.nix
-  hosts/desktop.nix
+  profiles/notebook.nix       Bauform mit Touchpad und internem Display
+  profiles/desktop.nix        Bauform ohne beides, auch VMs
 plasma/
   common.nix                  Portable Plasma-Basis inkl. Konsole
   dracula.colorscheme         Konsole-Farbschema mit Opacity 0.6

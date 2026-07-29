@@ -46,19 +46,22 @@
       sys = import ./system/packages.nix;
       repos = import ./system/repos.nix;
 
-      # Hostnames sind reine Profilnamen. bootstrap.sh/sync.sh wählen anhand
-      # von `hostname` automatisch das passende Profil.
-      hosts = [ "notebook" "desktop" ];
+      # Profile beschreiben ausschliesslich die Hardware-Bauform, nicht eine
+      # bestimmte Maschine: 'notebook' hat Touchpad und internes Display mit
+      # eigener Skalierung, 'desktop' hat beides nicht. Mit dem Hostnamen hat
+      # das nichts zu tun — bootstrap.sh/sync.sh erkennen die Bauform selbst
+      # und verändern den Hostnamen nie.
+      profiles = [ "notebook" "desktop" ];
 
-      mkHost = hostname: home-manager.lib.homeManagerConfiguration {
+      mkProfile = profile: home-manager.lib.homeManagerConfiguration {
         inherit pkgs;
-        extraSpecialArgs = { inherit username homeDirectory hostname; };
+        extraSpecialArgs = { inherit username homeDirectory profile; };
         modules = [
           plasma-manager.homeModules.plasma-manager
           nix-flatpak.homeManagerModules.nix-flatpak
           ./home/common.nix
           ./home/linux.nix
-          ./home/hosts/${hostname}.nix
+          ./home/profiles/${profile}.nix
         ];
       };
 
@@ -67,7 +70,7 @@
     in
     {
       homeConfigurations = builtins.listToAttrs
-        (map (h: { name = h; value = mkHost h; }) hosts);
+        (map (p: { name = p; value = mkProfile p; }) profiles);
 
       packages.${system} = {
         ancestris = pkgs.callPackage ./pkgs/ancestris.nix { };
@@ -79,7 +82,7 @@
       aptInstall = space sys.apt.install;
       aptPurge = space sys.apt.purge;
       flatpakPackages = space sys.flatpak.packages;
-      hostList = space hosts;
+      profileList = space profiles;
 
       # Fremd-Repos als shell-auswertbare Blöcke (siehe system/repos.nix).
       aptRepoSetup = lines (map (r: r.setup) repos);

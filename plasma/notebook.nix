@@ -1,8 +1,10 @@
 { config, pkgs, lib, ... }:
 
-# Maschinenspezifische Plasma-Einstellungen für das Notebook.
-# Werte aus dem rc2nix-Export übernommen (der stammt von diesem Gerät:
-# eDP-1 ist das interne Panel).
+# Plasma-Einstellungen für die Bauform "notebook": Geräte mit Touchpad und
+# internem Display. Das ist der einzige Grund, warum es überhaupt zwei
+# Profile gibt — mit dem Hostnamen der Maschine hat es nichts zu tun.
+#
+# Werte aus dem rc2nix-Export übernommen (eDP-1 ist das interne Panel).
 #
 # Absichtlich NICHT hier eingefroren, weil KDE sie selbst erzeugt und sie
 # an UUIDs hängen, die pro Neuinstallation neu vergeben werden:
