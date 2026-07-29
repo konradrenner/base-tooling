@@ -144,7 +144,6 @@ Session.vim
 # ---------------------------------------------------------------------------
 # Claude Code (lokale, maschinenspezifische Settings)
 .claude/settings.local.json
-.claude
 
 # Diverses
 *.log
