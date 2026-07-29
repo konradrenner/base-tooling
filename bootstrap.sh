@@ -116,8 +116,29 @@ ensure_repo
 
 # ── Profil bestimmen ────────────────────────────────────────────────
 resolve_host() {
-  local known current
+  local known target current
   known="$(nix eval --raw "${INSTALL_DIR}#hostList")"
+
+  target="${HOST:-$(hostname -s)}"
+
+  # Erst prüfen, dann anfassen. Andernfalls bliebe bei einem Tippfehler in
+  # --host ein umbenannter Rechner ohne angewandte Konfiguration zurück, und
+  # der nächste Lauf ohne --host würde denselben unbekannten Namen erkennen.
+  case " ${known} " in
+    *" ${target} "*) : ;;
+    *) err "Kein Profil namens '${target}'.
+Bekannte Profile: ${known}
+
+Es wurde nichts verändert — der Hostname ist unangetastet.
+
+Entweder ein bekanntes Profil verwenden:
+    --host notebook
+
+Oder '${target}' als neues Profil anlegen (drei Stellen):
+    1. home/hosts/${target}.nix   (an home/hosts/desktop.nix orientieren)
+    2. plasma/${target}.nix       (an plasma/desktop.nix orientieren)
+    3. in flake.nix bei 'hosts' den Namen ergänzen" ;;
+  esac
 
   if [[ -n "$HOST" ]]; then
     current="$(hostname -s)"
@@ -126,16 +147,10 @@ resolve_host() {
       ensure_sudo
       sudo hostnamectl set-hostname "$HOST"
     fi
-  else
-    HOST="$(hostname -s)"
   fi
 
-  case " ${known} " in
-    *" ${HOST} "*) msg "Profil: ${HOST}" ;;
-    *) err "Kein Profil für Hostname '${HOST}'.
-Bekannte Profile: ${known}
-Nutze --host <name> oder lege home/hosts/${HOST}.nix und plasma/${HOST}.nix an." ;;
-  esac
+  HOST="$target"
+  msg "Profil: ${HOST}"
 }
 
 resolve_host

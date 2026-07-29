@@ -56,7 +56,12 @@ fi
 known="$(nix eval --raw "${INSTALL_DIR}#hostList")"
 case " ${known} " in
   *" ${HOST} "*) msg "Profil: ${HOST}" ;;
-  *) err "Kein Profil für Hostname '${HOST}'. Bekannte Profile: ${known}" ;;
+  *) err "Kein Profil namens '${HOST}'.
+Bekannte Profile: ${known}
+
+Entweder --host <name> mit einem bekannten Profil aufrufen, oder
+'${HOST}' anlegen: home/hosts/${HOST}.nix, plasma/${HOST}.nix und den
+Namen in flake.nix bei 'hosts' ergänzen." ;;
 esac
 
 check_layer_overlap "$INSTALL_DIR"

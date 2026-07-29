@@ -62,7 +62,7 @@ Am zweiten Gerät identisch, nur mit `--host desktop`.
 |Option |Wirkung
 
 |`--host <name>`
-|Profil wählen (`notebook` oder `desktop`). Ohne Angabe wird der Hostname der Maschine verwendet. *Mit* Angabe wird der System-Hostname zusätzlich per `hostnamectl` auf diesen Wert gesetzt — praktisch bei einer Frischinstallation, wo TUXEDO OS einen Default-Namen vergibt.
+|Profil wählen (`notebook` oder `desktop`). Ohne Angabe wird der Hostname der Maschine verwendet. *Mit* Angabe wird der System-Hostname zusätzlich per `hostnamectl` auf diesen Wert gesetzt — praktisch bei einer Frischinstallation, wo TUXEDO OS einen Default-Namen vergibt. Bei einem unbekannten Namen bricht das Skript ab, *bevor* es den Hostname anfasst, und nennt die bekannten Profile. Gross- und Kleinschreibung wird unterschieden.
 
 |`--dir <pfad>`
 |Zielverzeichnis des Repos. Default `~/.base-tooling`.
@@ -358,7 +358,26 @@ Beides steht *nicht* im Repo:
 * *Benutzername und Home* kommen über `$USER` und `$HOME` aus der Umgebung. Deshalb läuft der Build mit `--impure`. Die Paketauswahl bleibt davon unberührt und stammt vollständig aus `flake.lock` — unrein ist nur die Auswertung zweier Umgebungsvariablen, nicht das Ergebnis.
 * *Der Hostname* wird automatisch erkannt und wählt das Profil. `--host` überschreibt und setzt zusätzlich den System-Hostname.
 
-Ein neues Gerät hinzufügen: `home/hosts/<name>.nix` und `plasma/<name>.nix` anlegen, den Namen in `flake.nix` bei `hosts` ergänzen.
+=== Neues Gerät oder Profil hinzufügen
+
+Drei Stellen:
+
+. `home/hosts/<name>.nix` anlegen (an `home/hosts/desktop.nix` orientieren)
+. `plasma/<name>.nix` anlegen (an `plasma/desktop.nix` orientieren)
+. In `flake.nix` bei `hosts` den Namen ergänzen
+
+Der Hostname der Maschine muss dem Profilnamen entsprechen, oder man gibt ihn per `--host` mit.
+
+=== In einer Test-VM ausprobieren
+
+Zum Testen des Setups in einer VM braucht es normalerweise *kein* eigenes Profil — einfach ein bestehendes verwenden:
+
+[source,bash]
+----
+curl -fsSL .../bootstrap.sh | bash -s -- --host desktop
+----
+
+`desktop` passt für eine VM besser als `notebook`, weil dort keine Notebook-Skalierung und keine Touchpad-Einstellungen gesetzt werden. Ein eigenes `testvm`-Profil lohnt sich nur, wenn man VM-spezifische Einstellungen dauerhaft festhalten will.
 
 == Struktur
 
