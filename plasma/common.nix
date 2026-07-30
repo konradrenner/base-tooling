@@ -215,6 +215,15 @@
         location = "left";
         height = 44;
 
+        # Schwebendes Panel: es liegt normalerweise abgesetzt vom Rand und nur
+        # so lang wie sein Inhalt, und rastet erst dann randbuendig auf die
+        # volle Laenge ein, wenn ein Fenster maximiert ist. Genau das
+        # Verhalten, das erwartet wird.
+        #
+        # Bleibt es trotzdem durchgehend voll lang, ist lengthMode = "fit" der
+        # naechste Schalter.
+        floating = true;
+
         widgets = [
           "org.kde.plasma.kickoff"
           "org.kde.plasma.pager"
