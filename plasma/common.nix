@@ -52,9 +52,17 @@
       colorScheme = "Dracula";
 
       # font-family / font-size
+      #
+      # Ghostty stand auf 14, hier ist es aber 11 — und das ist kein Fehler:
+      # macOS rechnet Punkte gegen 72 dpi, Qt gegen ~96 dpi. Dieselbe
+      # Punktzahl erscheint unter Linux also rund 30% groesser.
+      #   14 * 72/96 = 10,5
+      # Das deckt sich mit der Kate-Schrift aus derselben Einrichtung, die auf
+      # Groesse 10 steht. 11 ist bewusst eine Spur groesser, weil Terminals
+      # davon profitieren. Wer es exakt wie Kate will, nimmt 10.
       font = {
         name = "JetBrainsMono Nerd Font Mono";
-        size = 14;
+        size = 11;
       };
 
       extraConfig = {
@@ -68,9 +76,9 @@
         };
 
         Appearance = {
-          # adjust-cell-height = 10% -> Konsole rechnet in Pixeln,
-          # 2px sind bei Schriftgröße 14 die nächstliegende Annäherung.
-          LineSpacing = "2";
+          # adjust-cell-height = 10% -> Konsole rechnet in Pixeln.
+          # Bei Schriftgröße 11 ist 1px die nächstliegende Annäherung.
+          LineSpacing = "1";
         };
 
         "Cursor Options" = {

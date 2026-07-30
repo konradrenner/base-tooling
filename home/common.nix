@@ -44,6 +44,21 @@
     # IDE (Swing, deshalb unkritisch aus Nix)
     netbeans
 
+    # Windows-Anwendungen unter Linux. Aus Nix statt als .deb von Hand:
+    # die Derivation bringt freerdp, usbutils, docker-compose und den
+    # cross-kompilierten Guest-Server selbst mit — genau den Teil, den Winboat
+    # sonst nachlaedt. Deshalb steht freerdp auch nicht mehr in der apt-Liste.
+    #
+    # Die Host-Integration bleibt trotzdem intakt: Docker CE kommt aus apt, der
+    # Socket steht ueber DOCKER_HOST bereit, und die Gruppen docker/kvm setzt
+    # bootstrap.sh. Winboats mitgeliefertes docker-compose liegt nur in seinem
+    # eigenen Wrapper und verschattet den apt-Client nicht global.
+    #
+    # Die Oberflaeche ist Electron und laeuft ohne nixGL womoeglich in
+    # Software-Rendering. Das ist hier unkritisch: gezeichnet werden die
+    # Windows-Programme von FreeRDP, Electron ist nur das Bedienfenster.
+    winboat
+
     # Genealogie: kein Flathub, kein nixpkgs -> eigene AppImage-Derivation.
     # Bewusst deaktiviert, bis der Hash in pkgs/ancestris.nix eingetragen ist —
     # sonst würde ein Platzhalter-Hash jeden `switch` scheitern lassen.

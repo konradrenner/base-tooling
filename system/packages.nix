@@ -35,8 +35,8 @@
       "qemu-utils"
       "bridge-utils"
 
-      # Winboat-Voraussetzung (braucht FreeRDP 3.x)
-      "freerdp3-x11"
+      # FreeRDP steht hier NICHT: Winboat kommt aus Nix und bringt sein
+      # eigenes freerdp mit (siehe home/common.nix).
 
       # ── Entwicklung ───────────────────────────────────────────────
       # VS Code aus dem MS-Repo: Flatpak plus Dev Containers plus devenv

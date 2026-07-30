@@ -40,7 +40,28 @@
 
       pkgs = import nixpkgs {
         inherit system;
-        config.allowUnfree = true;
+        config = {
+          allowUnfree = true;
+
+          # Winboat baut auf Electron 40, das nixpkgs als unsicher markiert
+          # (bekannte Chromium-CVEs). Ohne diese Freigabe verweigert Nix die
+          # Auswertung.
+          #
+          # Bewusst akzeptiert, weil die Alternative dasselbe Risiko traegt:
+          # Winboats eigenes .deb buendelt dieselbe Electron-Version, sagt es
+          # aber nicht. nixpkgs macht die Lage nur sichtbar. Zudem verarbeitet
+          # Winboats Oberflaeche keine fremden Webinhalte — sie ist ein
+          # lokales Bedienfenster fuer den Windows-Container.
+          #
+          # Eng gefasst: freigegeben ist genau diese eine Version, nicht
+          # allowInsecure = true fuer alles. Hebt nixpkgs Electron an, schlaegt
+          # der Build mit dem neuen Versionsnamen fehl — dann ist die
+          # Entscheidung bewusst neu zu treffen, was so gewollt ist.
+          #
+          # Rueckweg: diese Zeile und `winboat` in home/common.nix entfernen,
+          # dann Winboat wieder als .deb von Hand installieren.
+          permittedInsecurePackages = [ "electron-40.10.5" ];
+        };
       };
 
       sys = import ./system/packages.nix;

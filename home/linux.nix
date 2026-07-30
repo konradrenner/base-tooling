@@ -51,6 +51,12 @@ in
   home.sessionVariables = {
     # Docker CE kommt aus apt; devenv-Shells sollen den Socket sehen.
     DOCKER_HOST = "unix:///var/run/docker.sock";
+
+    # Für Electron-Anwendungen aus Nix (derzeit Winboat): nixpkgs-Wrapper
+    # lesen diese Variablen und wählen damit die richtige Ozone-Plattform,
+    # statt unter Wayland in XWayland zu landen.
+    NIXOS_OZONE_WL = "1";
+    ELECTRON_OZONE_PLATFORM_HINT = "auto";
   };
 
   # Gleiches für direnv-/devenv-Shells, unabhängig von der Login-Shell.

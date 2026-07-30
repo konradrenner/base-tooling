@@ -197,18 +197,17 @@ Zwingend. Erst dann greifen Gruppenmitgliedschaften (Docker ohne sudo), die Logi
 
 Das lässt sich nicht automatisieren:
 
-* *Winboat* — kommt als .deb-Release, nicht aus einem apt-Repo:
-+
-[source,bash]
-----
-# Release von https://github.com/TibixDev/winboat holen, dann:
-sudo apt install ./winboat-*-amd64.deb
-----
-+
-Voraussetzungen (Docker CE, KVM, FreeRDP 3) deckt der apt-Layer ab. Podman und rootless Container werden nicht unterstützt. Beim ersten Start lädt Winboat das Windows-Image.
-
 * *Ancestris* — siehe <<ancestris,eigener Abschnitt>>.
 * *Zugangsdaten* — KeePassXC-Browser-Extension, Nextcloud-Login, Kontact-Konten.
+* *Winboat* — installiert sich mit, lädt aber beim ersten Start das Windows-Image herunter. Das dauert und braucht Platz.
+
+=== Winboat
+
+Kommt aus Nix, nicht als .deb von Hand. Die nixpkgs-Derivation bringt `freerdp`, `usbutils`, `docker-compose` und den cross-kompilierten Guest-Server selbst mit — genau den Teil, den Winboat sonst nachladen müsste. Deshalb steht FreeRDP auch nicht in der apt-Liste.
+
+Die Host-Integration bleibt intakt: Docker CE kommt aus apt, der Socket steht über `DOCKER_HOST` bereit, und die Gruppen `docker` und `kvm` setzt `bootstrap.sh`. Podman und rootless Container unterstützt Winboat nicht — deshalb Docker CE.
+
+Die Oberfläche ist Electron und läuft ohne `nixGL` möglicherweise in Software-Rendering. Das ist unkritisch, weil die Windows-Programme selbst von FreeRDP gezeichnet werden und Electron nur das Bedienfenster ist.
 
 [[day2]]
 == Day 2: Änderungen anwenden
