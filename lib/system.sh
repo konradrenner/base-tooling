@@ -95,17 +95,51 @@ Ein neues Profil braucht drei Stellen:
 # Startmenü-Einträge oder verschattete Binaries im PATH.
 check_layer_overlap() {
   local repo="$1"
-  local apt_list flatpak_list overlap
+  local apt_list flatpak_ids flatpak_short overlap id short dup=""
+  local nl=$'\n'
 
   apt_list="$(nix eval --raw "${repo}#aptInstall" | tr ' ' '\n' | sort -u)"
-  flatpak_list="$(nix eval --raw "${repo}#flatpakPackages" \
-    | tr ' ' '\n' | awk -F. '{print tolower($NF)}' | sort -u)"
+  flatpak_ids="$(nix eval --raw "${repo}#flatpakPackages" | tr ' ' '\n')"
 
-  overlap="$(comm -12 <(echo "$apt_list") <(echo "$flatpak_list") || true)"
+  # Aus der Anwendungskennung den vermutlichen apt-Namen ableiten:
+  # org.videolan.VLC -> vlc, org.gimp.GIMP -> gimp. Eine Heuristik, aber fuer
+  # die hier verwendeten Kennungen zuverlaessig.
+  flatpak_short="$(printf '%s\n' "$flatpak_ids" \
+    | awk -F. 'NF{print tolower($NF)}' | sort -u)"
+
+  # ── a) unsere beiden deklarierten Listen gegeneinander ──────────────
+  overlap="$(comm -12 <(printf '%s\n' "$apt_list") \
+                      <(printf '%s\n' "$flatpak_short") || true)"
   if [ -n "$overlap" ]; then
     warn "Paketname taucht in apt UND Flatpak auf:
-$overlap
+${overlap}
 Prüfe die Listen in system/packages.nix."
+  fi
+
+  # ── b) Flatpak gegen das, was apt TATSAECHLICH installiert hat ──────
+  # Faengt den Fall, den (a) nicht sieht: die Distribution bringt eine
+  # Anwendung vorinstalliert mit, die wir zusaetzlich als Flatpak deklarieren.
+  # Ergebnis waeren zwei Eintraege im Anwendungsstarter — genau so ist VLC
+  # doppelt aufgetaucht.
+  if require_cmd dpkg-query; then
+    for id in $flatpak_ids; do
+      short="$(printf '%s' "${id##*.}" | tr '[:upper:]' '[:lower:]')"
+      [ -n "$short" ] || continue
+      if dpkg-query -W -f='${Status}' "$short" 2>/dev/null \
+          | grep -q "install ok installed"; then
+        dup="${dup}${dup:+${nl}}  ${id}  <->  apt-Paket '${short}' ist installiert"
+      fi
+    done
+
+    if [ -n "$dup" ]; then
+      warn "Als Flatpak deklariert, aber auch als apt-Paket installiert:
+
+${dup}
+
+Das ergibt doppelte Einträge im Anwendungsstarter. Entweder aus der
+Flatpak-Liste entfernen und das apt-Paket nutzen, oder das apt-Paket auf die
+purge-Liste setzen — beides in system/packages.nix."
+    fi
   fi
 }
 

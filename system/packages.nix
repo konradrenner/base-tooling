@@ -95,6 +95,12 @@
       # Begruendung ausfuehrlich in system/repos.nix.
       "spotify-client"
 
+      # VLC nativ: TuxedoOS bringt es vorinstalliert mit, und ein zusaetzlicher
+      # Flatpak ergibt zwei Eintraege im Anwendungsstarter. Fuer einen
+      # Mediaplayer ist nativ ohnehin die bessere Wahl — Hardware-Videodecoding
+      # ueber VAAPI funktioniert ausserhalb der Sandbox verlaesslicher.
+      "vlc"
+
       # ── Browser ───────────────────────────────────────────────────
       # Firefox liefert TuxedoOS bereits als .deb mit (kein Snap) —
       # hier nur zur Absicherung deklariert.
@@ -177,11 +183,13 @@
     # extra-data-Pakete, die bei der Installation Inhalte nachladen und in
     # bwrap auspacken.
     #
-    # Spotify stand hier und ist bewusst nach apt gewandert, siehe
-    # system/repos.nix.
+    # Nach apt gewandert und deshalb hier NICHT mehr enthalten:
+    #   com.spotify.Client  - extra-data-Paket, scheitert an der
+    #                         User-Namespace-Einschraenkung, siehe repos.nix
+    #   org.videolan.VLC    - von der Distribution vorinstalliert, ergab einen
+    #                         doppelten Eintrag im Anwendungsstarter
     packages = [
       "org.gimp.GIMP"
-      "org.videolan.VLC"
       "org.inkscape.Inkscape"
       # Auf Ubuntu-Basis der bessere Weg als apt: keine
       # 32-Bit-Multiarch-Kaskade.
