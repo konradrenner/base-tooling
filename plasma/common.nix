@@ -190,6 +190,32 @@
       "KDE Keyboard Layout Switcher"."Switch to Last-Used Keyboard Layout" = "Meta+Alt+L";
     };
 
+    # ── Globales Thema ────────────────────────────────────────────────
+    # Musste hier von Hand ergänzt werden: rc2nix sperrt die Schlüssel
+    # LookAndFeelPackage, ColorScheme und alles, was auf "Theme" endet
+    # (KEY_BLOCK_LIST). Im Export war davon also nichts enthalten.
+    #
+    # Das Look-and-Feel-Paket bringt Farbschema, Plasma-Stil, Icons,
+    # Cursor und Fensterdekoration in einem mit — deshalb wird hier nur
+    # dieser eine Wert gesetzt statt fünf einzelne, die auseinanderdriften
+    # könnten.
+    #
+    # Angewandt wird es mit `plasma-apply-lookandfeel -a`, bewusst OHNE
+    # --resetLayout. Das Panel-Layout bleibt damit unangetastet.
+    workspace = {
+      lookAndFeel = "org.kde.breezedark.desktop";
+
+      # Nur setzen, wenn du bewusst von den Vorgaben des Themas abweichst.
+      # Gültige Werte findest du mit:
+      #   plasma-apply-colorscheme --list-schemes
+      #   plasma-apply-desktoptheme --list-themes
+      #   plasma-apply-cursortheme --list-themes
+      # colorScheme = "BreezeDark";
+      # theme = "breeze-dark";
+      # iconTheme = "breeze-dark";
+      # cursor = { theme = "breeze_cursors"; size = 24; };
+    };
+
     # ── Web-Shortcuts ─────────────────────────────────────────────────
     # plasma-manager verwaltet kuriikwsfilterrc über ein eigenes Modul,
     # deshalb hier die Option statt der rohen rc-Schlüssel.
