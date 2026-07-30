@@ -8,6 +8,27 @@ err() { printf "\n\033[1;31mFEHLER:\033[0m %s\n" "$*" >&2; exit 1; }
 
 require_cmd() { command -v "$1" >/dev/null 2>&1; }
 
+# apt-Aufrufe strikt nicht-interaktiv.
+#
+# Grund: dpkg fragt bei geänderten Konfigurationsdateien nach und liest die
+# Antwort von der Standardeingabe. Bei `curl … | bash` IST die Standardeingabe
+# das Skript — dpkg verschluckt dann einen Teil des noch nicht ausgeführten
+# Skripttexts, und bash endet danach an willkürlicher Stelle ohne
+# Fehlermeldung. Genau das ist beim ersten vollständigen Lauf passiert, an der
+# Rückfrage zu /etc/zsh/zshrc.
+#
+#   --force-confdef  vorhandene Antwort des Paketbetreuers nehmen, wenn eindeutig
+#   --force-confold  sonst die installierte Fassung behalten
+#
+# Zusätzlich </dev/null, damit ein Unterprozess selbst dann nichts vom Skript
+# lesen kann, wenn eine Rückfrage doch durchkommt.
+apt_get() {
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get \
+    -o Dpkg::Options::=--force-confdef \
+    -o Dpkg::Options::=--force-confold \
+    "$@" </dev/null
+}
+
 ensure_sudo() {
   msg "sudo-Rechte werden benötigt, du wirst evtl. nach dem Passwort gefragt."
   sudo -v
@@ -160,11 +181,11 @@ apt_install() {
   pkgs="$(nix eval --raw "${repo}#aptInstall")"
 
   msg "apt update"
-  sudo apt-get update -y
+  apt_get update -y
 
   msg "apt install"
   # shellcheck disable=SC2086
-  if sudo apt-get install -y $pkgs; then
+  if apt_get install -y $pkgs; then
     return 0
   fi
 
@@ -178,7 +199,7 @@ apt_install() {
 Verursacher zu benennen. Das dauert einen Moment."
 
   for p in $pkgs; do
-    sudo apt-get install -y "$p" >/dev/null 2>&1 || failed+=("$p")
+    apt_get install -y "$p" >/dev/null 2>&1 || failed+=("$p")
   done
 
   if [ ${#failed[@]} -gt 0 ]; then
@@ -234,7 +255,7 @@ Erwartet war der Wert aus system/packages.nix. Es wurde nichts installiert.
 Entweder wurde das Release ersetzt, oder der Download ist beschädigt."
     fi
 
-    sudo apt-get install -y "${tmp}/${name}.deb"
+    apt_get install -y "${tmp}/${name}.deb"
     rm -rf "$tmp"
   done <<< "$list"
 }
@@ -260,7 +281,7 @@ apt_purge_checked() {
   fi
 
   msg "Purge simulieren: ${installed[*]}"
-  if ! sim="$(sudo apt-get purge --simulate "${installed[@]}" 2>&1)"; then
+  if ! sim="$(apt_get purge --simulate "${installed[@]}" 2>&1)"; then
     err "apt-get purge --simulate ist fehlgeschlagen:
 $sim"
   fi
@@ -279,7 +300,7 @@ Wenn das so gewollt ist, trage die Pakete dort mit ein."
   fi
 
   msg "Purge ausführen: ${installed[*]}"
-  sudo apt-get purge -y "${installed[@]}"
+  apt_get purge -y "${installed[@]}"
 
   # autoremove läuft absichtlich NICHT automatisch — es würde die
   # --simulate-Prüfung umgehen. Bei Bedarf manuell:

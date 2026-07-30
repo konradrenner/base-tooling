@@ -73,7 +73,6 @@ else
   apt_install "$INSTALL_DIR"
   apt_install_debs "$INSTALL_DIR"
   apt_purge_checked "$INSTALL_DIR"
-  ensure_groups "$USER"
 fi
 
 hm_switch "$INSTALL_DIR" "$PROFILE"
@@ -81,6 +80,7 @@ flatpak_kick
 
 # Bewusst NACH hm_switch, siehe Kommentar in lib/system.sh.
 if [[ "$SKIP_APT" == false ]]; then
+  ensure_groups "$USER"
   ensure_zsh_login_shell "$USER"
 fi
 

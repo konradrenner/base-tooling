@@ -40,6 +40,8 @@ Username und Home-Verzeichnis werden aus $USER und $HOME gelesen.
 USAGE
 }
 
+ORIG_ARGS=("$@")
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile) PROFILE_ARG="${2:-}"; shift 2 ;;
@@ -119,6 +121,28 @@ ensure_nix
 ensure_flakes
 ensure_repo
 
+# ── Neustart aus der geklonten Datei ────────────────────────────────
+# Bei `curl … | bash` IST die Standardeingabe das Skript: bash liest den Text
+# fortlaufend von stdin. Liest irgendein Unterprozess ebenfalls davon, frisst
+# er den noch nicht ausgeführten Rest — und bash endet danach an willkürlicher
+# Stelle ohne jede Fehlermeldung.
+#
+# Genau das ist passiert: dpkg fragte bei /etc/zsh/zshrc nach, las die Antwort
+# von stdin und verschluckte damit einen Teil des Skripts. Zweimal
+# reproduziert, immer am gleichen Punkt, immer ohne Meldung.
+#
+# Die apt-Aufrufe laufen inzwischen nicht-interaktiv und mit </dev/null. Diese
+# Ursachenklasse ist damit aber nur eingedämmt, nicht beseitigt — jeder
+# künftige Unterprozess könnte sie neu aufreissen. Deshalb hier der
+# strukturelle Riegel: sobald das Repo auf der Platte liegt, aus der Datei
+# neu starten. Danach liest bash den Skripttext aus einer Datei, und die
+# Standardeingabe ist wieder das Terminal.
+if [[ "${BASE_TOOLING_REEXEC:-}" != "1" ]]; then
+  pre_msg "Neustart aus ${INSTALL_DIR}/bootstrap.sh (löst die Standardeingabe vom Skript)"
+  export BASE_TOOLING_REEXEC=1
+  exec bash "${INSTALL_DIR}/bootstrap.sh" --no-pull "${ORIG_ARGS[@]}"
+fi
+
 # Ab hier stehen die gemeinsamen Funktionen zur Verfügung.
 # shellcheck source=lib/system.sh
 . "${INSTALL_DIR}/lib/system.sh"
@@ -137,18 +161,25 @@ else
   apt_install "$INSTALL_DIR"
   apt_install_debs "$INSTALL_DIR"
   apt_purge_checked "$INSTALL_DIR"
-  ensure_groups "$USER"
 fi
 
 # ── Nix-Layer ───────────────────────────────────────────────────────
 hm_switch "$INSTALL_DIR" "$PROFILE"
 flatpak_kick
 
-# ── Login-Shell zuletzt ─────────────────────────────────────────────
-# Bewusst NACH hm_switch. Scheitert der Home-Manager-Lauf, bleibt bash die
-# Login-Shell, statt dass man in einer zsh ohne jede Konfiguration landet
-# und von zsh-newuser-install begrüsst wird.
+# ── Systemänderungen zuletzt ────────────────────────────────────────
+# Beide bewusst NACH hm_switch:
+#
+#   Gruppen — sie sind Komfort (docker ohne sudo). Sollte hier je etwas haken,
+#   darf es den Nix-Layer und die Plasma-Konfiguration nicht kosten. Genau
+#   dieser Schritt stand vorher vor hm_switch und sah zweimal wie der
+#   Verursacher aus, obwohl die Ursache eine andere war.
+#
+#   Login-Shell — scheitert der Home-Manager-Lauf, bleibt bash die
+#   Login-Shell, statt dass man in einer zsh ohne jede Konfiguration landet
+#   und von zsh-newuser-install begrüsst wird.
 if [[ "$SKIP_APT" == false ]]; then
+  ensure_groups "$USER"
   ensure_zsh_login_shell "$USER"
 fi
 
