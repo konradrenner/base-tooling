@@ -209,6 +209,23 @@ flatpak_gc() {
     return 0
   fi
 
+  # nix-flatpak installiert über einen systemd-User-Service. Schlägt der fehl,
+  # sind die deklarierten Apps nicht da, ihre Runtimes gelten damit als
+  # ungenutzt — und ein Aufräumen würde genau das löschen, was der nächste
+  # Versuch wieder braucht. Mehrere Gigabyte Neuladen pro Durchlauf.
+  if require_cmd systemctl \
+     && systemctl --user is-failed --quiet flatpak-managed-install.service 2>/dev/null; then
+    warn "flatpak-managed-install.service ist fehlgeschlagen.
+Die deklarierten Flatpaks sind vermutlich nicht installiert, deshalb wird
+NICHT aufgeräumt — sonst würden Runtimes entfernt, die gleich wieder
+gebraucht werden.
+
+Ursache ansehen mit:
+  systemctl --user status flatpak-managed-install.service
+  journalctl --user -u flatpak-managed-install.service -n 50 --no-pager"
+    return 0
+  fi
+
   msg "Ungenutzte Flatpak-Runtimes entfernen (user-Installation)"
 
   local out
