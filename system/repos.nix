@@ -43,6 +43,37 @@
   }
 
   {
+    name = "spotify";
+    setup = ''
+      # Spotify als natives .deb statt als Flatpak.
+      #
+      # Grund: Spotifys Flatpak ist ein extra-data-Paket und fuehrt bei der
+      # Installation apply_extra in bwrap mit eigenem Netzwerk-Namespace aus.
+      # Ubuntu 24.04+ setzt kernel.apparmor_restrict_unprivileged_userns=1 und
+      # verbietet damit das Aufsetzen des Loopback-Interface:
+      #   bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted
+      # Der apt-Weg loest das Problem, statt eine systemweite Absicherung fuer
+      # eine einzelne App zu lockern.
+      #
+      # Abweichend von Spotifys eigener Anleitung landet der Schluessel NICHT
+      # in /etc/apt/trusted.gpg.d — dort waere er fuer jedes Repo gueltig.
+      # Mit signed-by gilt er nur fuer dieses eine.
+      #
+      # Spotify rotiert den Schluessel gelegentlich. Aktuelle URL steht auf
+      # https://www.spotify.com/de/download/linux/
+      if [ ! -f /etc/apt/keyrings/spotify.gpg ]; then
+        sudo install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.spotify.com/debian/pubkey_5384CE82BA52C83A.asc \
+          | gpg --dearmor \
+          | sudo tee /etc/apt/keyrings/spotify.gpg > /dev/null
+        sudo chmod a+r /etc/apt/keyrings/spotify.gpg
+      fi
+      echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/spotify.gpg] https://repository.spotify.com stable non-free" \
+        | sudo tee /etc/apt/sources.list.d/spotify.list > /dev/null
+    '';
+  }
+
+  {
     name = "google-chrome";
     setup = ''
       # Google Chrome
