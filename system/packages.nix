@@ -68,11 +68,16 @@
       # LibreOffice mit KDE-Frontend: native Dateidialoge und
       # Plasma-Theming. Als Flatpak wirkt es fremd.
       "libreoffice"
-      # KF5, nicht KF6: Ubuntu noble liefert LibreOffice 24.2, und dort gibt
-      # es ausschliesslich libreoffice-kf5. Das VCL-Plugin laeuft auch unter
-      # Plasma 6, zieht aber KF5-Bibliotheken mit. Sobald die Distro eine
-      # LibreOffice-Version mit libreoffice-kf6 ausliefert, hierher wechseln.
-      "libreoffice-kf5"
+      # KF6, nicht KF5. Wichtig: packages.ubuntu.com ist fuer TuxedoOS KEINE
+      # verlaessliche Referenz. Stock-noble liefert LibreOffice 24.2 mit
+      # ausschliesslich libreoffice-kf5 — TUXEDO ueberschreibt es aber aus
+      # eigenen Repos mit 25.8 (`~0tux1`), und dort existiert nur die
+      # KF6-Integration. Ein Versuch mit kf5 endet in:
+      #   libreoffice-kf5: Haengt ab von libreoffice-qt5
+      #                    ist aber nicht installierbar
+      # Paketnamen also immer gegen `apt-cache policy` auf dem Geraet pruefen,
+      # nicht gegen die Ubuntu-Paketsuche.
+      "libreoffice-kf6"
       "libreoffice-l10n-de"
 
       # Nextcloud-Client: die Dolphin-Integration mit Overlay-Icons
