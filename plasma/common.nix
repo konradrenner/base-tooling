@@ -190,6 +190,65 @@
       "KDE Keyboard Layout Switcher"."Switch to Last-Used Keyboard Layout" = "Meta+Alt+L";
     };
 
+    # ── Panel ─────────────────────────────────────────────────────────
+    # Nachgebaut aus dem appletsrc: Containment 2, location=5 (links),
+    # formfactor=3 (vertikal), AppletOrder=46;37;36;5;6;7;20.
+    #
+    # ACHTUNG, zwei Nebenwirkungen beim ersten Anwenden:
+    #
+    # 1. plasma-manager löscht vorher plasma-org.kde.plasma.desktop-appletsrc
+    #    komplett und baut sie neu. In derselben Datei stecken auch die
+    #    Desktop-Containments — die Analoguhr und das TUXEDO Control Hub auf
+    #    dem Desktop sowie die Ordneransichten gehen dabei verloren und
+    #    müssen einmal von Hand wieder angelegt werden. Wer sie deklarieren
+    #    will, braucht programs.plasma.desktop.widgets samt Position und
+    #    Größe jedes Widgets.
+    #
+    # 2. height = 44 ist Plasmas Standarddicke. Im appletsrc gab es keine
+    #    [PlasmaViews]-Sektion, das Panel lief also auf dem Default — nach
+    #    dem Anwenden bitte kurz vergleichen.
+    #
+    # Vorher testen, nicht direkt auf dem Arbeitsgerät: das desktop-Profil in
+    # einer VM anwenden, Ergebnis ansehen, dann erst auf dem Notebook.
+    panels = [
+      {
+        location = "left";
+        height = 44;
+
+        widgets = [
+          "org.kde.plasma.kickoff"
+          "org.kde.plasma.pager"
+          "org.kde.plasma.notes"
+
+          {
+            iconTasks = {
+              # Angepinnte Anwendungen, Reihenfolge wie gehabt.
+            #
+            # Zwei Einträge weichen bewusst vom aktuellen appletsrc ab:
+            # VLC und GIMP kommen in diesem Setup aus Flatpak, nicht aus apt.
+            # Ihre Desktop-Dateien heissen deshalb org.videolan.VLC.desktop
+            # und org.gimp.GIMP.desktop statt vlc.desktop und gimp.desktop —
+            # mit den alten Namen wären die beiden Pins nach einer
+            # Neuinstallation ins Leere zeigend.
+              launchers = [
+                "applications:libreoffice-startcenter.desktop"
+                "preferred://filemanager"
+                "applications:org.kde.konsole.desktop"
+                "applications:firefox.desktop"
+                "applications:org.kde.kontact.desktop"
+                "applications:org.videolan.VLC.desktop"
+                "applications:org.gimp.GIMP.desktop"
+              ];
+            };
+          }
+
+          "org.kde.plasma.marginsseparator"
+          "org.kde.plasma.systemtray"
+          "org.kde.plasma.digitalclock"
+        ];
+      }
+    ];
+
     # ── Globales Thema ────────────────────────────────────────────────
     # Musste hier von Hand ergänzt werden: rc2nix sperrt die Schlüssel
     # LookAndFeelPackage, ColorScheme und alles, was auf "Theme" endet
