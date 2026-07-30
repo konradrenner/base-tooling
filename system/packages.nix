@@ -58,6 +58,13 @@
       # digiKam: KDE-App auf KDE-Distro, gehört in den nativen Stack.
       "digikam"
 
+      # k3b braucht Zugriff auf optische Laufwerke und die Brenn-Helfer
+      # (cdrecord, growisofs), die apt als Abhängigkeiten mitzieht.
+      "k3b"
+
+      # Kasts: Kirigami-Podcastplayer, gehört ebenfalls in den KDE-Stack.
+      "kasts"
+
       # LibreOffice mit KDE-Frontend: native Dateidialoge und
       # Plasma-Theming. Als Flatpak wirkt es fremd.
       "libreoffice"
