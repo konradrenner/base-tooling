@@ -71,6 +71,30 @@ in
       done
       unset _d
       export XDG_DATA_DIRS
+
+      # plasma-manager ruft `qdbus` ohne Pfad und ohne deklarierte
+      # Abhaengigkeit auf, um die Panel-Konfiguration an plasmashell zu
+      # uebergeben:
+      #   qdbus org.kde.plasmashell /PlasmaShell …evaluateScript "$(cat …)"
+      #
+      # Auf Ubuntu heisst das Binary im PATH aber `qdbus6`; das unter dem
+      # Namen `qdbus` erreichbare liegt in /usr/lib/qt6/bin und ist nicht im
+      # PATH. Ohne diesen Eintrag scheitert das Anwenden still mit
+      # "qdbus: Kommando nicht gefunden" — das Panel bleibt unveraendert, und
+      # zu sehen ist der Fehler nur, wenn man das Skript von Hand aufruft.
+      #
+      # Angehaengt, nicht vorangestellt: so ueberdecken die Qt-Werkzeuge in
+      # diesem Verzeichnis nichts, was schon im PATH liegt.
+      for _q in /usr/lib/qt6/bin /usr/lib/qt5/bin; do
+        if [ -x "$_q/qdbus" ]; then
+          case ":$PATH:" in
+            *":$_q:"*) ;;
+            *) PATH="$PATH:$_q" ;;
+          esac
+        fi
+      done
+      unset _q
+      export PATH
     '';
   };
 
