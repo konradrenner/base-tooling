@@ -319,16 +319,36 @@ ${out}"
 
 # ── Gruppen und Login-Shell ─────────────────────────────────────────
 ensure_groups() {
-  local user="$1" g
+  local user="$1" g current
+
+  # Mitgliedschaften einmal in eine Variable holen, statt pro Gruppe eine
+  # Pipeline zu bauen. Grund: `id -nG | tr | grep -q` bricht bei Treffer die
+  # Pipeline ab, tr bekommt SIGPIPE, und mit `set -o pipefail` gilt die
+  # Pipeline dann als fehlgeschlagen — obwohl grep gefunden hat.
+  current=" $(id -nG "$user" 2>/dev/null || true) "
+
   for g in docker libvirt kvm; do
-    if getent group "$g" >/dev/null 2>&1; then
-      if ! id -nG "$user" | tr ' ' '\n' | grep -qx "$g"; then
-        msg "Füge '$user' zur Gruppe '$g' hinzu"
-        sudo usermod -aG "$g" "$user"
-        NEEDS_RELOGIN=1
-      fi
-    else
+    if ! getent group "$g" >/dev/null 2>&1; then
       warn "Gruppe '$g' existiert nicht — übersprungen."
+      continue
+    fi
+
+    case "$current" in
+      *" ${g} "*) continue ;;
+    esac
+
+    msg "Füge '$user' zur Gruppe '$g' hinzu"
+
+    # Bewusst nicht fatal: ein fehlgeschlagener Gruppeneintrag darf nicht den
+    # ganzen Lauf verhindern. Ohne die Gruppe braucht man fuer docker eben
+    # sudo — das ist unbequem, aber kein Grund, Nix-Layer und
+    # Plasma-Konfiguration ausfallen zu lassen.
+    if sudo usermod -aG "$g" "$user"; then
+      NEEDS_RELOGIN=1
+    else
+      warn "Konnte '$user' nicht zur Gruppe '$g' hinzufügen.
+Der Lauf wird fortgesetzt. Nachholen mit:
+    sudo usermod -aG ${g} ${user}"
     fi
   done
 }
