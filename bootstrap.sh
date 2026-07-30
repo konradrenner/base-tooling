@@ -163,8 +163,8 @@ Noch von Hand zu tun — das lässt sich nicht automatisieren:
   * KeePassXC-Browser-Extension in Firefox/Chrome installieren.
   * Nextcloud-Client anmelden.
   * Kontact-Konten einrichten.
-  * Ancestris: Hash in pkgs/ancestris.nix eintragen, dann die Zeile in
-    home/common.nix einkommentieren (siehe README).
+  * Ancestris: AppImage von https://www.ancestris.org herunterladen,
+    ausführbar machen und ablegen (siehe README).
 
 EOF
 

@@ -504,21 +504,18 @@ Ghostty statt Konsole wäre möglich, würde aber `nixGL` erfordern: GTK4-Progra
 [[ancestris]]
 == Ancestris
 
-Weder auf Flathub noch in nixpkgs, nur als AppImage. Statt es im Bootstrap irgendwo herunterzuladen, ist es eine reguläre Derivation mit gepinnter URL und Hash — damit genauso reproduzierbar wie alles andere.
+Der einzige Handgriff, der bewusst manuell bleibt.
 
-Einmalig einzurichten:
+Ancestris gibt es weder in einem apt-Repo noch auf Flathub noch in nixpkgs — nur als AppImage. Und die Downloadseite gibt ihre Links ausschliesslich per JavaScript aus, eine URL zum Pinnen ist also nicht verlässlich zu ermitteln. Damit fehlt die Grundlage für den Weg, den Winboat nimmt (gepinnte URL plus sha256 in `system/packages.nix`).
 
 [source,bash]
 ----
-# 1. Aktuelle URL und Version in pkgs/ancestris.nix eintragen
-# 2. Hash ermitteln — der Build bricht ab und nennt ihn:
-nix build .#ancestris
-# 3. Genannten Hash in pkgs/ancestris.nix eintragen
-# 4. Die auskommentierte Zeile in home/common.nix einkommentieren
-# 5. ./sync.sh --no-pull
+# AppImage von https://www.ancestris.org holen, dann:
+chmod +x ~/Downloads/ancestris-*.AppImage
+mkdir -p ~/.local/bin && mv ~/Downloads/ancestris-*.AppImage ~/.local/bin/ancestris
 ----
 
-Bis dahin ist es in `home/common.nix` bewusst auskommentiert, damit der Platzhalter-Hash nicht jeden `switch` scheitern lässt.
+NOTE: Sollte Ancestris irgendwann eine stabile, direkt verlinkte Download-URL anbieten, gehört es in die `debs`-Mechanik aus `system/packages.nix` beziehungsweise ein AppImage-Äquivalent davon — dann mit Hash und automatisch. Bis dahin wäre jede Automatisierung ein ungeprüfter Download, und das ist schlechter als ein bewusster Handgriff.
 
 [[profile]]
 == Profile: ausschliesslich eine Frage der Bauform

@@ -72,10 +72,6 @@
       homeConfigurations = builtins.listToAttrs
         (map (p: { name = p; value = mkProfile p; }) profiles);
 
-      packages.${system} = {
-        ancestris = pkgs.callPackage ./pkgs/ancestris.nix { };
-      };
-
       # ── Datenausgaben für die Shell-Skripte ───────────────────────────
       # Eine Quelle der Wahrheit: die Listen leben in system/packages.nix,
       # die Skripte lesen sie mit `nix eval --raw .#aptInstall`.

@@ -50,12 +50,10 @@
     # und zieht 1,4 GiB Electron-Abhaengigkeiten nach. Stattdessen als
     # gepinntes .deb, siehe system/packages.nix.
 
-    # Genealogie: kein Flathub, kein nixpkgs -> eigene AppImage-Derivation.
-    # Bewusst deaktiviert, bis der Hash in pkgs/ancestris.nix eingetragen ist —
-    # sonst würde ein Platzhalter-Hash jeden `switch` scheitern lassen.
-    # Vorgehen: `nix build .#ancestris` ausführen, den genannten Hash
-    # eintragen, dann diese Zeile einkommentieren.
-    # (pkgs.callPackage ../pkgs/ancestris.nix { })
+    # Ancestris steht hier nicht: es gibt es weder in einem apt-Repo noch auf
+    # Flathub noch in nixpkgs, und die Downloadseite gibt ihre Links nur per
+    # JavaScript aus — eine URL zum Pinnen ist damit nicht verlässlich zu
+    # ermitteln. Bleibt bewusst ein Handgriff, siehe README.
 
     # Font für p10k-Prompt und eza-Icons
     nerd-fonts.jetbrains-mono
