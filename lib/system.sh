@@ -131,6 +131,52 @@ apt_install() {
   sudo apt-get install -y $pkgs
 }
 
+# Einzelne .deb-Releases installieren, für Programme ohne apt-Repo und ohne
+# Flathub. URL und sha256 stehen gepinnt in system/packages.nix.
+#
+# Idempotent: ist die deklarierte Version schon installiert, wird nichts
+# geladen. Der Hash wird vor der Installation geprüft — ohne ihn wäre die URL
+# eine ungepinnte Zutat in einem ansonsten reproduzierbaren Setup.
+apt_install_debs() {
+  local repo="$1"
+  local list name version sha url tmp installed
+
+  list="$(nix eval --raw "${repo}#debList")"
+  [ -n "${list//[[:space:]]/}" ] || return 0
+
+  while read -r name version sha url; do
+    [ -n "$name" ] || continue
+
+    installed="$(dpkg-query -W -f='${Version}' "$name" 2>/dev/null || true)"
+    # Prefixvergleich, damit eine Paketrevision wie 0.9.0-1 nicht jedes Mal
+    # eine Neuinstallation auslöst.
+    case "$installed" in
+      "${version}"*)
+        msg "${name} ${installed} ist installiert."
+        continue
+        ;;
+    esac
+
+    msg "${name} ${version} installieren (bisher: ${installed:-nicht installiert})"
+
+    tmp="$(mktemp -d)"
+    if ! curl -fL --progress-bar -o "${tmp}/${name}.deb" "$url"; then
+      rm -rf "$tmp"
+      err "Download von ${name} fehlgeschlagen: ${url}"
+    fi
+
+    if ! printf '%s  %s\n' "$sha" "${tmp}/${name}.deb" | sha256sum -c --quiet -; then
+      rm -rf "$tmp"
+      err "Hash von ${name} weicht ab.
+Erwartet war der Wert aus system/packages.nix. Es wurde nichts installiert.
+Entweder wurde das Release ersetzt, oder der Download ist beschädigt."
+    fi
+
+    sudo apt-get install -y "${tmp}/${name}.deb"
+    rm -rf "$tmp"
+  done <<< "$list"
+}
+
 # Purge mit Sicherheitsnetz: erst simulieren, und abbrechen falls apt mehr
 # entfernen würde als deklariert. Kein `-y` ins Blaue.
 apt_purge_checked() {

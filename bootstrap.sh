@@ -135,6 +135,7 @@ else
   ensure_sudo
   apt_repo_setup "$INSTALL_DIR"
   apt_install "$INSTALL_DIR"
+  apt_install_debs "$INSTALL_DIR"
   apt_purge_checked "$INSTALL_DIR"
   ensure_groups "$USER"
 fi
@@ -158,7 +159,7 @@ cat <<EOF
 Noch von Hand zu tun — das lässt sich nicht automatisieren:
 
   * Winboat einmal starten; es lädt beim ersten Lauf das Windows-Image.
-    Das .deb ist nicht Teil des apt-Repos, siehe README.
+    Das dauert und braucht Platz. Installiert ist es schon.
   * KeePassXC-Browser-Extension in Firefox/Chrome installieren.
   * Nextcloud-Client anmelden.
   * Kontact-Konten einrichten.

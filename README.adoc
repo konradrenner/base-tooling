@@ -136,6 +136,10 @@ WICHTIG: Das Setup garantiert, *welche* Apps vorhanden sind — nicht in welcher
 * *apt* dort, wo es nativ sein muss: KDE-Stack (Kontact, digiKam), LibreOffice mit KDE-Frontend, KeePassXC wegen Browser-Native-Messaging, Nextcloud wegen Dolphin-Integration, Docker CE, Virtualisierung, VS Code.
 * *Nix* für alles andere. Bewusst *nicht* in Nix: `docker`, `freerdp`, `libreoffice`, `vlc`, `gimp`, `code` — eine Nix-Variante würde den apt-Client im PATH verschatten oder die Desktop-Integration brechen. `bootstrap.sh` und `sync.sh` warnen, wenn ein Paketname in zwei Layern auftaucht.
 
+Als Ausnahme gibt es einzelne *.deb-Releases* für Programme ohne apt-Repo und ohne Flathub, mit gepinnter URL und sha256 in `system/packages.nix`. Derzeit betrifft das nur Winboat, siehe unten.
+
+Die Regel dahinter: *Nix für GUI-Programme nur, wenn es keinen nativen und keinen Flatpak-Weg gibt* — und auch dann nicht, wenn der Bauaufwand unverhältnismässig ist. Electron-Anwendungen und Browser wollen ausserdem floatende, zügig aktualisierte Versionen; in `flake.lock` gepinnt würden sie altern, bis man bewusst aktualisiert.
+
 [[day0]]
 == Day 0: Erstinstallation
 
@@ -201,13 +205,37 @@ Das lässt sich nicht automatisieren:
 * *Zugangsdaten* — KeePassXC-Browser-Extension, Nextcloud-Login, Kontact-Konten.
 * *Winboat* — installiert sich mit, lädt aber beim ersten Start das Windows-Image herunter. Das dauert und braucht Platz.
 
-=== Winboat
+=== Winboat: gepinntes .deb
 
-Kommt aus Nix, nicht als .deb von Hand. Die nixpkgs-Derivation bringt `freerdp`, `usbutils`, `docker-compose` und den cross-kompilierten Guest-Server selbst mit — genau den Teil, den Winboat sonst nachladen müsste. Deshalb steht FreeRDP auch nicht in der apt-Liste.
+Winboat wird automatisch installiert, aber **nicht** aus Nix — obwohl es dort liegt. Stattdessen als .deb-Release mit gepinnter URL und sha256 in `system/packages.nix`, installiert von `apt_install_debs`.
 
-Die Host-Integration bleibt intakt: Docker CE kommt aus apt, der Socket steht über `DOCKER_HOST` bereit, und die Gruppen `docker` und `kvm` setzt `bootstrap.sh`. Podman und rootless Container unterstützt Winboat nicht — deshalb Docker CE.
+Der Grund ist der Bauaufwand der Nix-Variante. Winboats Guest-Server ist Go-Code, der für Windows cross-kompiliert wird, und `winboat` fehlt im Binary-Cache. Ein `nix build` ergibt:
 
-Die Oberfläche ist Electron und läuft ohne `nixGL` möglicherweise in Software-Rendering. Das ist unkritisch, weil die Windows-Programme selbst von FreeRDP gezeichnet werden und Electron nur das Bedienfenster ist.
+....
+these 5 derivations will be built:
+  go-1.25.12.drv                                    <- Go lokal kompiliert
+  electron-40.10.5.drv
+  winboat-guest-server-x86_64-w64-mingw32-0.9.0.drv
+  winboat-0.9.0.drv
+these 506 paths will be fetched (1.4 GiB download, 4.3 GiB unpacked)
+....
+
+Dazu verlangte die nixpkgs-Variante eine Freigabe für das als unsicher markierte Electron 40. Das Upstream-.deb bündelt dieselbe Electron-Version und denselben Guest-Server, nur fertig gebaut — also genau das, was das Projekt selbst testet. Damit fallen der Go-Build, die MinGW-Toolchain, die 1,4 GiB und die `permittedInsecurePackages`-Zeile weg.
+
+Der Preis: die Versionsnummer muss beim Aktualisieren von Hand nachgezogen werden.
+
+[source,bash]
+----
+# Neues Release nachziehen
+curl -sL <url> | sha256sum          # Hash bestimmen
+$EDITOR system/packages.nix         # version, url und sha256 eintragen
+----
+
+`apt_install_debs` lädt nur, wenn die deklarierte Version nicht schon installiert ist, und **prüft den Hash vor der Installation**. Weicht er ab, bricht es ab, ohne etwas zu installieren — ohne diese Prüfung wäre die URL eine ungepinnte Zutat in einem ansonsten reproduzierbaren Setup.
+
+Voraussetzungen kommen aus apt: `docker-ce`, `freerdp3-x11`, `usbutils`, dazu die Gruppen `docker` und `kvm` von `bootstrap.sh`. Podman und rootless Container unterstützt Winboat nicht — daher Docker CE.
+
+Beim ersten Start lädt Winboat das Windows-Image herunter. Das dauert und braucht Platz.
 
 [[day2]]
 == Day 2: Änderungen anwenden
@@ -568,7 +596,7 @@ plasma/
   desktop.nix                 Noch leer, siehe Kommentar in der Datei
 pkgs/ancestris.nix            AppImage-Derivation
 system/
-  packages.nix                apt-install, apt-purge, Flatpak-Liste
+  packages.nix                apt-install, apt-purge, .deb-Releases, Flatpak
   repos.nix                   Fremd-apt-Repos als Shell-Bloecke
 lib/system.sh                 Gemeinsame Funktionen der Skripte
 bootstrap.sh                  Day 0

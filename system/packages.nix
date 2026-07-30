@@ -35,8 +35,11 @@
       "qemu-utils"
       "bridge-utils"
 
-      # FreeRDP steht hier NICHT: Winboat kommt aus Nix und bringt sein
-      # eigenes freerdp mit (siehe home/common.nix).
+      # Winboat-Voraussetzungen. Das .deb deklariert sie laut Projektdoku
+      # nicht selbst, deshalb hier explizit.
+      # ACHTUNG: freerdp3-x11 ist ein ungepruefter Paketname.
+      "freerdp3-x11"
+      "usbutils"
 
       # ── Entwicklung ───────────────────────────────────────────────
       # VS Code aus dem MS-Repo: Flatpak plus Dev Containers plus devenv
@@ -124,6 +127,32 @@
       "imagemagick"
     ];
   };
+
+  # ── Einzelne .deb-Releases ──────────────────────────────────────────
+  # Fuer Programme, die es weder in einem apt-Repo noch auf Flathub gibt.
+  # URL und sha256 sind gepinnt, das Setup ist damit reproduzierbar, ohne
+  # dass etwas aus dem Netz ungeprueft installiert wird.
+  #
+  # Beim Aktualisieren: neue Version eintragen und den Hash neu bestimmen mit
+  #   curl -sL <url> | sha256sum
+  debs = [
+    {
+      name = "winboat";
+      version = "0.9.0";
+      url = "https://github.com/TibixDev/winboat/releases/download/v0.9.0/winboat-0.9.0-amd64.deb";
+      sha256 = "91d4d10d173fb572fba7c30ad49a2397374e4cde1bc5b4f807573890962afe4e";
+      # Bewusst NICHT aus nixpkgs, obwohl es dort liegt: Winboats
+      # Guest-Server ist in Go geschrieben und wird fuer Windows
+      # cross-kompiliert. Da winboat im Binary-Cache fehlt, baut das den
+      # Go-Compiler und die MinGW-Toolchain lokal und zieht 1,4 GiB
+      # Electron-Abhaengigkeiten nach. Zudem verlangt die nixpkgs-Variante
+      # eine Freigabe fuer das als unsicher markierte Electron 40.
+      #
+      # Das Upstream-.deb buendelt dieselbe Electron-Version und denselben
+      # Guest-Server, nur fertig gebaut — also genau das, was das Projekt
+      # auch testet.
+    }
+  ];
 
   flatpak = {
     # Reihenfolge ist relevant: nix-flatpak installiert der Liste nach und

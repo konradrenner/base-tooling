@@ -71,6 +71,7 @@ else
   ensure_sudo
   apt_repo_setup "$INSTALL_DIR"
   apt_install "$INSTALL_DIR"
+  apt_install_debs "$INSTALL_DIR"
   apt_purge_checked "$INSTALL_DIR"
   ensure_groups "$USER"
 fi
