@@ -184,8 +184,10 @@ Auf jedem Gerät derselbe Befehl, ohne Argumente. Das Skript erkennt die Bauform
 .. `apt-get install` der Liste aus `system/packages.nix`
 .. Purge der Liste aus `system/packages.nix` — *mit Sicherheitsnetz*, siehe unten
 .. Benutzer den Gruppen `docker`, `libvirt`, `kvm` hinzufügen
-.. zsh als Login-Shell setzen (nur wenn es in `/etc/shells` steht, nie ein Nix-Store-Pfad)
 . *Nix-Layer* — Home-Manager-Generation bauen und aktivieren. Nutzt das in `flake.lock` gepinnte Home Manager, nicht ein frisch geholtes. Vorhandene Dotfiles werden mit der Endung `.hm-bak` gesichert.
+. *zsh als Login-Shell setzen* — bewusst als **letzter** Schritt, und nur wenn `~/.zshrc` existiert und zsh in `/etc/shells` steht (nie ein Nix-Store-Pfad).
+
+IMPORTANT: Die Login-Shell wird absichtlich erst nach dem Nix-Layer umgestellt. Andernfalls hinterlässt ein fehlgeschlagener Home-Manager-Lauf eine zsh ohne jede Konfiguration, und man wird beim ersten Terminalstart von `zsh-newuser-install` begrüsst. Scheitert der Lauf, bleibt so bash die Login-Shell und das System benutzbar.
 
 === Danach: ab- und wieder anmelden
 

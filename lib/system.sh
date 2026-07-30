@@ -242,8 +242,22 @@ ensure_groups() {
   done
 }
 
+# WICHTIG: Diese Funktion darf erst NACH hm_switch aufgerufen werden.
+# Wird zsh zur Login-Shell gemacht, bevor Home Manager die Konfiguration
+# angelegt hat, und schlaegt Home Manager dann fehl, landet man in einer
+# nackten zsh und bekommt zsh-newuser-install vorgesetzt.
 ensure_zsh_login_shell() {
   local user="$1" zsh_path
+
+  # Zweite Absicherung gegen genau dieses Szenario: ohne Konfiguration
+  # wird die Login-Shell nicht umgestellt.
+  if [ ! -e "${HOME}/.zshrc" ]; then
+    warn "~/.zshrc existiert nicht — Login-Shell bleibt unverändert.
+Home Manager hat die Shell-Konfiguration offenbar nicht angelegt.
+Ohne sie würde zsh dich mit zsh-newuser-install begrüssen."
+    return 0
+  fi
+
   # Muss eine System-Shell aus /etc/shells sein, kein Nix-Store-Pfad.
   zsh_path="$(command -v zsh || true)"
   case "$zsh_path" in

@@ -73,10 +73,14 @@ else
   apt_install "$INSTALL_DIR"
   apt_purge_checked "$INSTALL_DIR"
   ensure_groups "$USER"
-  ensure_zsh_login_shell "$USER"
 fi
 
 hm_switch "$INSTALL_DIR" "$PROFILE"
+
+# Bewusst NACH hm_switch, siehe Kommentar in lib/system.sh.
+if [[ "$SKIP_APT" == false ]]; then
+  ensure_zsh_login_shell "$USER"
+fi
 
 # Bewusst NACH hm_switch: erst ist der deklarierte Flatpak-Stand angewandt,
 # danach steht fest, welche Runtimes wirklich niemand mehr braucht.

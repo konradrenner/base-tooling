@@ -137,11 +137,18 @@ else
   apt_install "$INSTALL_DIR"
   apt_purge_checked "$INSTALL_DIR"
   ensure_groups "$USER"
-  ensure_zsh_login_shell "$USER"
 fi
 
 # ── Nix-Layer ───────────────────────────────────────────────────────
 hm_switch "$INSTALL_DIR" "$PROFILE"
+
+# ── Login-Shell zuletzt ─────────────────────────────────────────────
+# Bewusst NACH hm_switch. Scheitert der Home-Manager-Lauf, bleibt bash die
+# Login-Shell, statt dass man in einer zsh ohne jede Konfiguration landet
+# und von zsh-newuser-install begrüsst wird.
+if [[ "$SKIP_APT" == false ]]; then
+  ensure_zsh_login_shell "$USER"
+fi
 
 # ── Abschluss ───────────────────────────────────────────────────────
 msg "Fertig."
