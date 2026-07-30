@@ -283,13 +283,23 @@ flatpak_gc() {
     return 0
   fi
 
-  # nix-flatpak installiert über einen systemd-User-Service. Schlägt der fehl,
-  # sind die deklarierten Apps nicht da, ihre Runtimes gelten damit als
-  # ungenutzt — und ein Aufräumen würde genau das löschen, was der nächste
-  # Versuch wieder braucht. Mehrere Gigabyte Neuladen pro Durchlauf.
-  if require_cmd systemctl \
-     && systemctl --user is-failed --quiet flatpak-managed-install.service 2>/dev/null; then
-    warn "flatpak-managed-install.service ist fehlgeschlagen.
+  if require_cmd systemctl; then
+    # Läuft die Installation noch, ist noch nicht entschieden, welche Runtimes
+    # gebraucht werden. Jetzt aufzuräumen würde mitten hinein löschen.
+    if systemctl --user is-active --quiet flatpak-managed-install.service 2>/dev/null; then
+      msg "flatpak-managed-install.service läuft noch — Aufräumen übersprungen.
+Die Flatpaks werden im Hintergrund installiert. Beim nächsten sync.sh wird
+aufgeräumt, sobald der Dienst durch ist. Fortschritt ansehen mit:
+  journalctl --user -u flatpak-managed-install.service -f"
+      return 0
+    fi
+
+    # nix-flatpak installiert über einen systemd-User-Service. Schlägt der
+    # fehl, sind die deklarierten Apps nicht da, ihre Runtimes gelten damit als
+    # ungenutzt — und ein Aufräumen würde genau das löschen, was der nächste
+    # Versuch wieder braucht. Mehrere Gigabyte Neuladen pro Durchlauf.
+    if systemctl --user is-failed --quiet flatpak-managed-install.service 2>/dev/null; then
+      warn "flatpak-managed-install.service ist fehlgeschlagen.
 Die deklarierten Flatpaks sind vermutlich nicht installiert, deshalb wird
 NICHT aufgeräumt — sonst würden Runtimes entfernt, die gleich wieder
 gebraucht werden.
@@ -297,7 +307,8 @@ gebraucht werden.
 Ursache ansehen mit:
   systemctl --user status flatpak-managed-install.service
   journalctl --user -u flatpak-managed-install.service -n 50 --no-pager"
-    return 0
+      return 0
+    fi
   fi
 
   msg "Ungenutzte Flatpak-Runtimes entfernen (user-Installation)"
@@ -415,4 +426,31 @@ hm_switch() {
 
   msg "Aktivieren"
   HOME_MANAGER_BACKUP_EXT=hm-bak "${out}/activate"
+}
+
+# Flatpak-Installation anstossen, ohne auf ihr Ende zu warten.
+#
+# Gehoert hierher, weil systemd.user.startServices = "suggest" Home Manager
+# davon abhaelt, die Units selbst zu starten (siehe home/linux.nix). Ohne
+# diesen Anstoss wuerden die Flatpaks erst beim naechsten Login oder Timer
+# gezogen.
+#
+# --no-block ist der Kern: der Dienst laedt mehrere Gigabyte, und genau das
+# Abwarten hat die Aktivierung vorher in den Timeout laufen lassen.
+flatpak_kick() {
+  require_cmd systemctl || return 0
+
+  if ! systemctl --user list-unit-files flatpak-managed-install.service \
+       >/dev/null 2>&1; then
+    return 0
+  fi
+
+  msg "Flatpak-Installation im Hintergrund anstossen"
+  if systemctl --user start --no-block flatpak-managed-install.service 2>/dev/null; then
+    msg "Läuft. Fortschritt ansehen mit:
+  journalctl --user -u flatpak-managed-install.service -f"
+  else
+    warn "Konnte flatpak-managed-install.service nicht anstossen.
+Sie läuft spätestens beim nächsten Login von selbst."
+  fi
 }

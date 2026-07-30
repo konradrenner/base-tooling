@@ -6,6 +6,29 @@ in
 {
   imports = [ ../plasma/common.nix ];
 
+  # ── systemd-User-Units nicht abwarten ───────────────────────────────
+  # Home Manager startet am Ende der Aktivierung die geänderten
+  # systemd-User-Units und wartet per sd-switch synchron auf ihr Ende.
+  # nix-flatpaks Installationsdienst ist aber Type=oneshot und lädt auf einem
+  # frischen System mehrere Gigabyte — damit läuft die Aktivierung zwangsläufig
+  # in den Timeout und bricht ab:
+  #
+  #   Starting units: flatpak-managed-install.service
+  #   Error: Error switching systemd units
+  #     1: timed out waiting on channel
+  #
+  # Und weil bootstrap.sh mit `set -e` läuft, riss das den gesamten Lauf mit,
+  # obwohl Profilgeneration und Dateiverknüpfungen bereits angelegt waren.
+  #
+  # "suggest" heisst: Home Manager verwaltet den Unit-Zustand nicht, sondern
+  # nennt nur, was zu starten wäre. Die Units haben WantedBy=default.target
+  # und einen Timer, laufen also spätestens beim nächsten Login von selbst —
+  # und bootstrap.sh/sync.sh stossen den Dienst zusätzlich mit --no-block an.
+  #
+  # Die Reichweite ist genau ein Dienst: nix-flatpak ist die einzige Quelle
+  # von systemd-User-Units in dieser Konfiguration.
+  systemd.user.startServices = "suggest";
+
   # ── Flatpak ─────────────────────────────────────────────────────────
   # Additive App-Schicht: die Menge ist deklariert, die Versionen floaten.
   #

@@ -142,6 +142,7 @@ fi
 
 # ── Nix-Layer ───────────────────────────────────────────────────────
 hm_switch "$INSTALL_DIR" "$PROFILE"
+flatpak_kick
 
 # ── Login-Shell zuletzt ─────────────────────────────────────────────
 # Bewusst NACH hm_switch. Scheitert der Home-Manager-Lauf, bleibt bash die

@@ -77,6 +77,7 @@ else
 fi
 
 hm_switch "$INSTALL_DIR" "$PROFILE"
+flatpak_kick
 
 # Bewusst NACH hm_switch, siehe Kommentar in lib/system.sh.
 if [[ "$SKIP_APT" == false ]]; then
