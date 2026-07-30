@@ -120,14 +120,37 @@
   };
 
   flatpak = {
+    # Reihenfolge ist relevant: nix-flatpak installiert der Liste nach und
+    # bricht beim ersten Fehler ab. Ein problematisches Paket vorne verhindert
+    # damit die Installation aller folgenden.
     packages = [
-      "com.spotify.Client"
       "org.gimp.GIMP"
       "org.videolan.VLC"
       "org.inkscape.Inkscape"
       # Auf Ubuntu-Basis der bessere Weg als apt: keine
       # 32-Bit-Multiarch-Kaskade.
       "com.valvesoftware.Steam"
+
+      # ACHTUNG, schlaegt auf Ubuntu-Basis derzeit fehl.
+      #
+      # Spotifys Flatpak ist ein extra-data-Paket: es laedt bei der
+      # Installation den echten Spotify-Client nach und fuehrt dessen
+      # apply_extra-Skript in bwrap mit eigenem Netzwerk-Namespace aus.
+      # Ubuntu 24.04+ setzt kernel.apparmor_restrict_unprivileged_userns=1,
+      # womit bwrap das Loopback-Interface nicht aufsetzen darf:
+      #   bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted
+      #   Error: apply_extra ist fehlgeschlagen, Exit-Status 256
+      #
+      # Deshalb bewusst ans Ende der Liste gestellt: so installieren sich die
+      # vier Pakete darueber, bevor der Service abbricht.
+      #
+      # Zwei Auswege, beide noch nicht entschieden:
+      #   a) Spotify aus apt beziehen (offizielles Repo, native .deb) und hier
+      #      streichen — loest das Sandbox-Problem, statt es zu umgehen
+      #   b) die AppArmor-Einschraenkung lockern:
+      #      sysctl kernel.apparmor_restrict_unprivileged_userns=0
+      #      schwaecht allerdings eine systemweite Absicherung fuer eine App
+      "com.spotify.Client"
     ];
   };
 }

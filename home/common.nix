@@ -126,7 +126,24 @@
       }
       {
         name = "fzf-tab";
-        src = pkgs.zsh-fzf-tab;
+        # Das kompilierte Beschleunigungsmodul von fzf-tab wird gegen
+        # Nix-glibc gebaut. Die Login-Shell ist aber die System-zsh aus apt,
+        # die gegen die aeltere System-glibc linkt — das Laden scheitert mit
+        #   version `GLIBC_ABI_DT_X86_64_PLT' not found
+        # und fzf-tab fragt danach bei JEDEM Shell-Start, ob es das Modul neu
+        # bauen soll.
+        #
+        # fzf-tab laedt das Modul nur, wenn die .so existiert:
+        #   if [[ -n $FZF_TAB_HOME/modules/Src/aloxaf/fzftab.(so|bundle) ]]
+        # Ohne sie greift still der reine zsh-Fallback (lib/zsh-ls-colors).
+        # Der Preis ist etwas langsamere Vervollstaendigung bei sehr vielen
+        # Treffern — gegen eine interaktive Rueckfrage pro Shell-Start ist
+        # das ein guter Tausch.
+        src = pkgs.zsh-fzf-tab.overrideAttrs (old: {
+          postInstall = (old.postInstall or "") + ''
+            find "$out" \( -name 'fzftab.so' -o -name 'fzftab.bundle' \) -delete
+          '';
+        });
         file = "share/fzf-tab/fzf-tab.plugin.zsh";
       }
     ];
