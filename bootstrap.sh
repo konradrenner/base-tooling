@@ -53,6 +53,23 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# ── Protokoll ───────────────────────────────────────────────────────
+# Das Skript schreibt sein Protokoll selbst, damit der Aufruf ohne
+# nachgeschaltete Pipe auskommt. `… | bash 2>&1 | tee log` ist fehleranfällig:
+# ein versehentlich doppeltes `| bash` schiebt die Ausgabe des Skripts in eine
+# zweite Shell, die die Logzeilen als Befehle auszuführen versucht — und wenn
+# die dann abbricht, reisst die Pipe und Unterprozesse sterben an "Broken pipe".
+#
+# Nur beim ersten Lauf einrichten: der Neustart weiter unten erbt die
+# Dateideskriptoren, sonst gäbe es die Ausgabe doppelt.
+# Nur wenn $HOME gesetzt und beschreibbar ist — ein fehlgeschlagenes exec
+# wuerde das Skript sonst mit einer voellig unverständlichen Meldung beenden.
+if [[ "${BASE_TOOLING_REEXEC:-}" != "1" && -n "${HOME:-}" && -w "${HOME}" ]]; then
+  BOOTSTRAP_LOG="${HOME}/base-tooling-bootstrap.log"
+  exec > >(tee -a "$BOOTSTRAP_LOG") 2>&1
+  printf "\n==> Protokoll: %s\n" "$BOOTSTRAP_LOG"
+fi
+
 # ── Vorbedingungen ──────────────────────────────────────────────────
 pre_msg() { printf "\n==> %s\n" "$*"; }
 pre_err() { printf "\nFEHLER: %s\n" "$*" >&2; exit 1; }
@@ -72,6 +89,17 @@ ensure_git() {
 }
 
 ensure_nix() {
+  # Erst nachsehen, ob Nix nur nicht im PATH dieser Shell liegt. Der
+  # Determinate-Installer richtet die Shell-Integration in /etc/profile.d ein,
+  # und das liest bash ausschliesslich in Login-Shells — ein neuer
+  # Terminal-Tab ist keine. Ohne diesen Griff würde das Skript eine
+  # vorhandene Installation nicht sehen und neu installieren wollen.
+  if ! command -v nix >/dev/null 2>&1 \
+     && [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+    # shellcheck disable=SC1091
+    . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+  fi
+
   if command -v nix >/dev/null 2>&1; then
     pre_msg "Nix ist bereits installiert."
     return 0
@@ -117,11 +145,7 @@ ensure_repo() {
   fi
 }
 
-ensure_nix
-ensure_flakes
-ensure_repo
-
-# ── Neustart aus der geklonten Datei ────────────────────────────────
+# ── Phase 1: Repo holen, dann aus der Datei neu starten ─────────────
 # Bei `curl … | bash` IST die Standardeingabe das Skript: bash liest den Text
 # fortlaufend von stdin. Liest irgendein Unterprozess ebenfalls davon, frisst
 # er den noch nicht ausgeführten Rest — und bash endet danach an willkürlicher
@@ -131,17 +155,25 @@ ensure_repo
 # von stdin und verschluckte damit einen Teil des Skripts. Zweimal
 # reproduziert, immer am gleichen Punkt, immer ohne Meldung.
 #
-# Die apt-Aufrufe laufen inzwischen nicht-interaktiv und mit </dev/null. Diese
-# Ursachenklasse ist damit aber nur eingedämmt, nicht beseitigt — jeder
-# künftige Unterprozess könnte sie neu aufreissen. Deshalb hier der
-# strukturelle Riegel: sobald das Repo auf der Platte liegt, aus der Datei
-# neu starten. Danach liest bash den Skripttext aus einer Datei, und die
-# Standardeingabe ist wieder das Terminal.
+# Die apt-Aufrufe laufen inzwischen nicht-interaktiv und mit </dev/null. Das
+# dämmt die Ursache ein, beseitigt sie aber nicht — jeder künftige
+# Unterprozess könnte sie neu aufreissen. Deshalb der strukturelle Riegel:
+# sobald das Repo auf der Platte liegt, aus der Datei neu starten.
+#
+# In dieser Phase steht bewusst so wenig wie möglich: nur git und der Klon.
+# Alles danach läuft ausschliesslich in Phase 2 und damit genau einmal —
+# stünde es hier, würde es nach dem Neustart ein zweites Mal laufen und das
+# Protokoll mit Doppelungen füllen.
 if [[ "${BASE_TOOLING_REEXEC:-}" != "1" ]]; then
+  ensure_repo
   pre_msg "Neustart aus ${INSTALL_DIR}/bootstrap.sh (löst die Standardeingabe vom Skript)"
   export BASE_TOOLING_REEXEC=1
   exec bash "${INSTALL_DIR}/bootstrap.sh" --no-pull "${ORIG_ARGS[@]}"
 fi
+
+# ── Phase 2: ab hier liest bash aus einer Datei ─────────────────────
+ensure_nix
+ensure_flakes
 
 # Ab hier stehen die gemeinsamen Funktionen zur Verfügung.
 # shellcheck source=lib/system.sh
