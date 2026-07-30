@@ -68,7 +68,11 @@
       # LibreOffice mit KDE-Frontend: native Dateidialoge und
       # Plasma-Theming. Als Flatpak wirkt es fremd.
       "libreoffice"
-      "libreoffice-kf6"
+      # KF5, nicht KF6: Ubuntu noble liefert LibreOffice 24.2, und dort gibt
+      # es ausschliesslich libreoffice-kf5. Das VCL-Plugin laeuft auch unter
+      # Plasma 6, zieht aber KF5-Bibliotheken mit. Sobald die Distro eine
+      # LibreOffice-Version mit libreoffice-kf6 ausliefert, hierher wechseln.
+      "libreoffice-kf5"
       "libreoffice-l10n-de"
 
       # Nextcloud-Client: die Dolphin-Integration mit Overlay-Icons

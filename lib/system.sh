@@ -120,15 +120,43 @@ apt_repo_setup() {
 
 apt_install() {
   local repo="$1"
-  local pkgs
+  local pkgs p
+  local failed=()
+
   pkgs="$(nix eval --raw "${repo}#aptInstall")"
 
   msg "apt update"
   sudo apt-get update -y
 
-  msg "apt install (${pkgs})"
+  msg "apt install"
   # shellcheck disable=SC2086
-  sudo apt-get install -y $pkgs
+  if sudo apt-get install -y $pkgs; then
+    return 0
+  fi
+
+  # Ein einziger falscher Paketname würde sonst den gesamten Lauf abbrechen —
+  # und damit auch den Nix-Layer, der davon völlig unabhängig ist. Paketnamen
+  # weichen zwischen Ubuntu-Versionen ab, das passiert also erwartbar.
+  #
+  # Deshalb im Fehlerfall einzeln nachziehen: der Rest wird installiert, und
+  # am Ende steht namentlich da, was gefehlt hat.
+  warn "Sammelinstallation fehlgeschlagen. Versuche die Pakete einzeln, um die
+Verursacher zu benennen. Das dauert einen Moment."
+
+  for p in $pkgs; do
+    sudo apt-get install -y "$p" >/dev/null 2>&1 || failed+=("$p")
+  done
+
+  if [ ${#failed[@]} -gt 0 ]; then
+    warn "Diese Pakete liessen sich nicht installieren:
+
+    ${failed[*]}
+
+Namen in system/packages.nix prüfen, etwa auf https://packages.ubuntu.com.
+Alles andere ist installiert, der Lauf wird fortgesetzt."
+  else
+    msg "Einzeln nachgezogen, alle Pakete sind installiert."
+  fi
 }
 
 # Einzelne .deb-Releases installieren, für Programme ohne apt-Repo und ohne
