@@ -30,10 +30,22 @@ in
     };
   };
 
-  # ── KDE muss die Nix-Apps sehen ─────────────────────────────────────
+  # ── KDE muss Nix- UND Flatpak-Apps sehen ────────────────────────────
   # Plasma sourct dieses Verzeichnis vor dem Session-Start. Ohne das Script
-  # kennt KDE XDG_DATA_DIRS nicht und findet keine Nix-installierten Apps
-  # im Anwendungsstarter (betrifft z.B. NetBeans und Ancestris).
+  # kennt KDE XDG_DATA_DIRS nicht und findet die Anwendungen nicht im
+  # Anwendungsstarter.
+  #
+  # Zwei getrennte Baustellen im selben Script:
+  #
+  # 1. Nix — ohne die hm-session-vars fehlt ~/.nix-profile/share, dann taucht
+  #    z.B. NetBeans nicht im Menue auf.
+  #
+  # 2. Flatpak — user-installierte Flatpaks legen ihre Desktop-Dateien unter
+  #    ~/.local/share/flatpak/exports/share ab. Normalerweise ergaenzt
+  #    /etc/profile.d/flatpak.sh diesen Pfad, aber eine Plasma-Session von
+  #    SDDM laeuft nicht zwingend durch eine Login-Shell — dann greift das
+  #    Script nie und GIMP, VLC, Inkscape und Steam sind installiert, aber
+  #    im Menue unsichtbar.
   xdg.configFile."plasma-workspace/env/nix.sh" = {
     executable = true;
     text = ''
@@ -44,6 +56,21 @@ in
       if [ -e "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
         . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
       fi
+
+      # Erst den Spec-Default setzen, damit /usr/share nicht verloren geht,
+      # falls XDG_DATA_DIRS leer ist.
+      : "''${XDG_DATA_DIRS:=/usr/local/share:/usr/share}"
+      for _d in \
+        "$HOME/.local/share/flatpak/exports/share" \
+        /var/lib/flatpak/exports/share
+      do
+        case ":$XDG_DATA_DIRS:" in
+          *":$_d:"*) ;;
+          *) XDG_DATA_DIRS="$_d:$XDG_DATA_DIRS" ;;
+        esac
+      done
+      unset _d
+      export XDG_DATA_DIRS
     '';
   };
 
