@@ -162,6 +162,30 @@ Flatpak-Liste entfernen und das apt-Paket nutzen, oder das apt-Paket auf die
 purge-Liste setzen — beides in system/packages.nix."
     fi
   fi
+
+  # ── c) Flatpak user- gegen system-Installation ──────────────────────
+  # nix-flatpak verwaltet als home-manager-Modul ausschliesslich die
+  # user-Installation. Discover kann eine App aber auch systemweit
+  # installieren — dann liegt sie zweimal vor und erscheint zweimal im
+  # Anwendungsstarter. Weder unsere Deklaration noch das Aufräumen
+  # (flatpak_gc, ebenfalls --user) sehen die system-Kopie.
+  if require_cmd flatpak; then
+    local both
+    both="$(comm -12 \
+      <(flatpak list --user --app --columns=application 2>/dev/null | sort -u) \
+      <(flatpak list --system --app --columns=application 2>/dev/null | sort -u) \
+      2>/dev/null || true)"
+
+    if [ -n "${both//[[:space:]]/}" ]; then
+      warn "Diese Flatpaks sind sowohl user- als auch systemweit installiert:
+
+$(printf '%s\n' "$both" | sed 's/^/    /')
+
+Das ergibt doppelte Einträge im Anwendungsstarter. Verwaltet wird hier nur
+die user-Installation, die system-Kopie also von Hand entfernen:
+    sudo flatpak uninstall --system <kennung>"
+    fi
+  fi
 }
 
 # ── apt ─────────────────────────────────────────────────────────────
