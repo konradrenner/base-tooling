@@ -435,21 +435,30 @@ Ohne sie würde zsh dich mit zsh-newuser-install begrüssen."
     return 0
   fi
 
-  # Muss eine System-Shell aus /etc/shells sein, kein Nix-Store-Pfad.
-  zsh_path="$(command -v zsh || true)"
-  case "$zsh_path" in
-    /nix/store/*|"")
-      zsh_path="/usr/bin/zsh"
-      ;;
-  esac
+  # /etc/shells ist die Autorität dafür, was als Login-Shell zulässig ist —
+  # also wird dort die erste ausführbare zsh genommen, statt Pfade zu erraten.
+  #
+  # `command -v zsh` taugt hier ausdrücklich nicht: nach der
+  # Home-Manager-Aktivierung liegt zsh als ~/.nix-profile/bin/zsh im PATH.
+  # Das ist kein /nix/store-Pfad, eine Musterprüfung darauf greift also nicht —
+  # in /etc/shells steht der Pfad aber ebenso wenig, und chsh würde ihn
+  # ablehnen. Genau daran ist die Umstellung einmal gescheitert.
+  zsh_path=""
+  while read -r cand; do
+    case "$cand" in
+      \#*) continue ;;
+      */zsh)
+        if [ -x "$cand" ]; then
+          zsh_path="$cand"
+          break
+        fi
+        ;;
+    esac
+  done < /etc/shells
 
-  if [ ! -x "$zsh_path" ]; then
-    warn "zsh nicht unter $zsh_path gefunden — Login-Shell nicht geändert."
-    return 0
-  fi
-
-  if ! grep -qx "$zsh_path" /etc/shells 2>/dev/null; then
-    warn "$zsh_path steht nicht in /etc/shells — Login-Shell nicht geändert."
+  if [ -z "$zsh_path" ]; then
+    warn "In /etc/shells steht keine ausführbare zsh — Login-Shell nicht geändert.
+Ist das apt-Paket 'zsh' installiert? Es registriert sich dort selbst."
     return 0
   fi
 

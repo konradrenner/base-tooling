@@ -240,20 +240,26 @@
           {
             iconTasks = {
               # Angepinnte Anwendungen, Reihenfolge wie gehabt.
-            #
-            # Zwei Einträge weichen bewusst vom aktuellen appletsrc ab:
-            # VLC und GIMP kommen in diesem Setup aus Flatpak, nicht aus apt.
-            # Ihre Desktop-Dateien heissen deshalb org.videolan.VLC.desktop
-            # und org.gimp.GIMP.desktop statt vlc.desktop und gimp.desktop —
-            # mit den alten Namen wären die beiden Pins nach einer
-            # Neuinstallation ins Leere zeigend.
+              #
+              # ACHTUNG: Der Name der Desktop-Datei haengt daran, aus WELCHEM
+              # Layer die Anwendung kommt.
+              #
+              #   apt      vlc.desktop, firefox.desktop, …
+              #   Flatpak  org.gimp.GIMP.desktop
+              #
+              # Passt der Name nicht, zeigt der Icon-Taskmanager ein
+              # "nicht gefunden"-Symbol mit der Kennung als Tooltip — die App
+              # selbst laeuft, nur der Pin ist toter Buchstabe.
+              #
+              # Wandert eine Anwendung zwischen apt und Flatpak, muss der
+              # Eintrag hier also mitwandern. Genau das ist bei VLC passiert.
               launchers = [
                 "applications:libreoffice-startcenter.desktop"
                 "preferred://filemanager"
                 "applications:org.kde.konsole.desktop"
                 "applications:firefox.desktop"
                 "applications:org.kde.kontact.desktop"
-                "applications:org.videolan.VLC.desktop"
+                "applications:vlc.desktop"
                 "applications:org.gimp.GIMP.desktop"
               ];
             };
