@@ -53,6 +53,16 @@
       "kmail"
       "korganizer"
       "kaddressbook"
+      # SQLite statt MySQL, damit kein Datenbankdienst im Hintergrund laeuft.
+      #
+      # Das Paket allein genuegt NICHT: Akonadi benutzt weiterhin den
+      # MySQL-Treiber und scheitert dann daran, dass AppArmor /usr/sbin/mysqld
+      # den Start mit einem Benutzer-Datenverzeichnis verweigert. Den Treiber
+      # stellt ein Aktivierungsschritt in home/linux.nix um.
+      #
+      # akonadi-backend-mysql landet ueber eine Alternativ-Abhaengigkeit von
+      # akonadi-server ohnehin mit auf dem System — apt nimmt bei Alternativen
+      # die erste genannte. Mit QSQLITE wird es schlicht nie benutzt.
       "akonadi-backend-sqlite"
 
       # digiKam: KDE-App auf KDE-Distro, gehört in den nativen Stack.
