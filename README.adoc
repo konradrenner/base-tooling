@@ -178,10 +178,10 @@ IMPORTANT: Genau ein `| bash`, und *keine* Pipe danach. Das Skript schreibt sein
 
 === Was das Skript in welcher Reihenfolge tut
 
-. *Vorbedingungen prüfen* — Linux, nicht als root, `$USER` und `$HOME` gesetzt.
-. *Nix installieren* über den Determinate-Systems-Installer, falls nicht vorhanden. Danach wird `nix-daemon.sh` in die laufende Shell gesourct, damit `nix` sofort verfügbar ist (nötig bei `curl | bash`).
+. *Vorbedingungen prüfen* — Linux, nicht als root, `$USER` und `$HOME` gesetzt. Protokoll nach `~/base-tooling-bootstrap.log` einrichten.
+. *Repo klonen* nach `~/.base-tooling`, dann *Neustart aus der geklonten Datei* — siehe den Kasten unten. In dieser ersten Phase steht bewusst nichts weiter, damit nach dem Neustart nichts ein zweites Mal läuft.
+. *Nix installieren* über den Determinate-Systems-Installer, falls nicht vorhanden. Vorher wird geprüft, ob Nix bloss nicht im PATH dieser Shell liegt — die Shell-Integration des Installers liegt in `/etc/profile.d`, und das liest bash nur in Login-Shells.
 . *Flakes aktivieren* — `experimental-features = nix-command flakes` in `~/.config/nix/nix.conf`, idempotent.
-. *Repo klonen* nach `~/.base-tooling`, dann *Neustart aus der geklonten Datei* — siehe den Kasten unten. Danach läuft alles Weitere genau einmal.
 . *Profil bestimmen* — aus der Bauform erkannt oder aus `--profile` übernommen, und gegen die Profilliste im Flake geprüft. Unbekanntes Profil bricht mit Hinweis ab, statt eine falsche Config anzuwenden.
 . *Layer-Prüfung* — warnt, wenn ein Paketname in beiden Listen steht, und wenn ein als Flatpak deklariertes Programm auch als apt-Paket installiert ist.
 . *apt-Layer* (entfällt bei `--skip-apt`):
