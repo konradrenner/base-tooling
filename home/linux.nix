@@ -157,6 +157,49 @@ in
     '';
   };
 
+  # ── Akonadi auf SQLite festlegen ────────────────────────────────────
+  # Ohne das startet Kontact nicht: Akonadi benutzt standardmaessig den
+  # MySQL-Treiber und ruft dafuer /usr/sbin/mysqld mit einem
+  # Benutzer-Datenverzeichnis auf. Auf Ubuntu verweigert AppArmor das:
+  #
+  #   Failed to detect mysqld version!
+  #   Could not start database server!
+  #   process error: execve: Zugriff verweigert
+  #
+  # Wir installieren akonadi-backend-sqlite (system/packages.nix), aber das
+  # allein stellt den Treiber nicht um. akonadi-backend-mysql landet zudem
+  # ueber eine Alternativ-Abhaengigkeit von akonadi-server ohnehin mit auf
+  # dem System — apt nimmt bei Alternativen die erste genannte.
+  #
+  # Mit SQLite wird mysqld nie aufgerufen, wir muessen AppArmor also gar
+  # nicht erst bekaempfen.
+  #
+  # BEWUSST kein xdg.configFile: Akonadi schreibt diese Datei selbst (Pfade,
+  # Optionen, Debug-Abschnitt). Ein schreibgeschuetzter Symlink in den
+  # Nix-Store wuerde es lahmlegen. Deshalb hier nur die eine Zeile
+  # sicherstellen und den Rest der Datei in Ruhe lassen — dieselbe Vorsicht
+  # wie bei der appletsrc.
+  home.activation.akonadiSqliteDriver =
+    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      _rc="${config.xdg.configHome}/akonadi/akonadiserverrc"
+
+      if [ -e "$_rc" ] && grep -q '^Driver=QSQLITE$' "$_rc"; then
+        : # steht schon richtig, nichts tun
+      elif [ -e "$_rc" ]; then
+        run cp "$_rc" "$_rc.hm-bak"
+        run sed -i 's/^Driver=.*$/Driver=QSQLITE/' "$_rc"
+        if ! grep -q '^Driver=QSQLITE$' "$_rc" 2>/dev/null; then
+          run sed -i 's/^\[%General\]$/[%General]\nDriver=QSQLITE/' "$_rc"
+        fi
+        echo "akonadiserverrc auf Driver=QSQLITE umgestellt (Sicherung: $_rc.hm-bak)."
+        echo "Damit es greift: akonadictl restart"
+      else
+        run mkdir -p "$(dirname "$_rc")"
+        run sh -c "printf '[%%General]\nDriver=QSQLITE\n' > '$_rc'"
+        echo "akonadiserverrc angelegt mit Driver=QSQLITE."
+      fi
+    '';
+
   # ── Session ─────────────────────────────────────────────────────────
   home.sessionVariables = {
     # Docker CE kommt aus apt; devenv-Shells sollen den Socket sehen.

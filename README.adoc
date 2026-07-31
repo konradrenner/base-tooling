@@ -492,6 +492,67 @@ Aufteilung:
 
 Absichtlich *nicht* eingefroren: `kwinrc "Tiling/<UUID>"`, `Desktops.Id_*`, `kactivitymanagerdrc`. Die hängen an UUIDs, die KDE bei jeder Neuinstallation neu vergibt.
 
+=== Wenn Panel oder Theme nicht ankommen
+
+Das häufigste Ärgernis, und es sieht immer gleich aus: nach einem `sync.sh` und Neuanmelden steht das Panel unten mit fremden Symbolen statt links mit deinen. Das ist Plasmas Standardpanel — die Deklaration wurde also *nicht* angewandt.
+
+.Wie das Anwenden funktioniert
+****
+plasma-manager schreibt Panel und Theme *nicht* in Konfigurationsdateien. Es legt eine Autostart-Datei an, die beim Sessionstart läuft und das Layout über die DBus-Schnittstelle an plasmashell übergibt:
+
+....
+~/.config/autostart/plasma-manager-autostart.desktop
+   └─ ~/.local/share/plasma-manager/scripts/*.sh
+        └─ qdbus org.kde.plasmashell /PlasmaShell …evaluateScript
+....
+
+Zwei Folgen daraus:
+
+. Änderungen wirken **erst nach Ab- und Anmelden**, nie sofort nach `sync.sh`.
+. Das Panel-Skript löscht zuerst `plasma-org.kde.plasma.desktop-appletsrc` und baut sie dann neu auf. Scheitert der zweite Teil, ist die alte Konfiguration weg und Plasma erzeugt ein Standardpanel — genau das Bild von oben.
+****
+
+Jedes Skript merkt sich per Prüfsumme in `~/.local/share/plasma-manager/last_run_*`, dass es gelaufen ist, und läuft danach nicht erneut.
+
+WARNING: Diese Marker sind unzuverlässig. plasma-manager erkennt Fehlschläge über `trap … ERR`, und das ist eine bash-Erweiterung — unter `dash`, das auf Ubuntu `/bin/sh` ist, meldet es nur `trap: ERR: bad trap` und greift nie. Der Erfolgsmarker wird deshalb *auch bei einem Fehlschlag* geschrieben, und das Skript versucht es nie wieder von selbst.
+
+Daraus folgt das Gegenmittel — Marker löschen, damit überhaupt ein neuer Versuch stattfindet:
+
+[source,bash]
+----
+rm -f ~/.local/share/plasma-manager/last_run_*
+# danach abmelden und anmelden
+----
+
+Kommt es immer noch nicht, führ das Skript von Hand aus. Nur so wird der Fehler sichtbar:
+
+[source,bash]
+----
+sh -x ~/.local/share/plasma-manager/scripts/2_desktop_script_panels.sh 2>&1 | tail -30
+----
+
+Das `trap: ERR: bad trap` darin ist normal und harmlos. Interessant ist alles danach.
+
+.Der bekannte Verursacher: qdbus
+****
+plasma-manager ruft `qdbus` ohne Pfad und ohne deklarierte Abhängigkeit auf. Auf Ubuntu geht das auf zwei Arten schief, und welche zutrifft, unterscheidet sich zwischen Geräten:
+
+[cols="1,2"]
+|===
+|Meldung |Ursache
+
+|`qdbus: Kommando nicht gefunden`
+|Das Binary heisst `qdbus6`; das unter dem Namen `qdbus` erreichbare liegt in `/usr/lib/qt6/bin` und ist nicht im PATH.
+
+|`qdbus: could not find a Qt installation of …`
+|`/usr/bin/qdbus` gehört dem Dispatcher `qtchooser`, der kein Qt konfiguriert hat.
+|===
+
+Deshalb liefert `home/linux.nix` einen eigenen `qdbus`-Wrapper unter `~/.local/share/base-tooling/bin/` und stellt genau dieses Verzeichnis dem PATH voran. Es enthält nur diesen einen Befehl, überdeckt also kein anderes Qt-Werkzeug — und `/usr/bin/qdbus` steht bewusst nicht in seiner Suchliste, weil das der kaputte Dispatcher ist.
+
+Beim zweiten Fall reicht blosses Anhängen an den PATH übrigens nicht: der kaputte Stub liegt weiter vorne und gewinnt.
+****
+
 === Zurücksynchronisieren
 
 [source,bash]
@@ -507,7 +568,20 @@ Bauform-Abhängiges gehört nach `plasma/notebook.nix` bzw. `plasma/desktop.nix`
 
 == Terminal
 
-Konsole, konfiguriert über plasma-manager in `plasma/common.nix`: Dracula mit 60% Transparenz, JetBrainsMono Nerd Font 14, Balken-Cursor, Copy-on-Select, 110×32, Start in `~/code`.
+Konsole, konfiguriert über plasma-manager in `plasma/common.nix`: Dracula mit 60% Transparenz, JetBrainsMono Nerd Font 11, Balken-Cursor, Copy-on-Select, 110×32, Start in `~/code`.
+
+Die Schriftgrösse ist bewusst 11 und nicht die 14 der Ghostty-Vorlage: macOS rechnet Punkte gegen 72 dpi, Qt gegen ~96. Dieselbe Punktzahl erscheint unter Linux rund 30% grösser, `14 × 72/96 = 10,5`.
+
+=== Die Shell des Terminals ist deklariert, nicht geerbt
+
+[source,nix]
+----
+profiles.base-tooling.command = "/bin/zsh";
+----
+
+Ohne diese Zeile startet Konsole, was in `$SHELL` steht. Diese Variable wird beim Anmelden aus `/etc/passwd` gesetzt und wandert durch SDDM, PAM und die systemd-User-Session — auf dem Bestandsnotebook kam sie dort nicht an: `passwd` stand nachweislich auf `/bin/zsh`, und Konsole startete nach dem Neuanmelden trotzdem bash.
+
+Die Login-Shell wird weiterhin per `chsh` gesetzt und bleibt für TTYs, `ssh` und Skripte massgeblich. Neu ist nur, dass das Terminal nicht mehr davon abhängt.
 
 Die Terminal-UX steckt allerdings überwiegend in zsh, nicht im Emulator: Powerlevel10k als Prompt, oh-my-zsh, fzf-tab, Autosuggestions, Syntax-Highlighting, geteilte History mit 10000 Einträgen. Das Prompt-Aussehen liegt als Ausgabe von `p10k configure` unverändert in `home/p10k.zsh`.
 

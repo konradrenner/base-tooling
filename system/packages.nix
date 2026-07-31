@@ -53,6 +53,16 @@
       "kmail"
       "korganizer"
       "kaddressbook"
+      # SQLite statt MySQL, damit kein Datenbankdienst im Hintergrund laeuft.
+      #
+      # Das Paket allein genuegt NICHT: Akonadi benutzt weiterhin den
+      # MySQL-Treiber und scheitert dann daran, dass AppArmor /usr/sbin/mysqld
+      # den Start mit einem Benutzer-Datenverzeichnis verweigert. Den Treiber
+      # stellt ein Aktivierungsschritt in home/linux.nix um.
+      #
+      # akonadi-backend-mysql landet ueber eine Alternativ-Abhaengigkeit von
+      # akonadi-server ohnehin mit auf dem System — apt nimmt bei Alternativen
+      # die erste genannte. Mit QSQLITE wird es schlicht nie benutzt.
       "akonadi-backend-sqlite"
 
       # digiKam: KDE-App auf KDE-Distro, gehört in den nativen Stack.
@@ -65,8 +75,9 @@
       # Kasts: Kirigami-Podcastplayer, gehört ebenfalls in den KDE-Stack.
       "kasts"
 
-      # Marknote: Kirigami-Notizanwendung aus KDE Gear.
-      "marknote"
+      # Marknote stand hier und ist wieder raus: es ist ein rein lokales
+      # Notizbuch und weiss nichts von Nextcloud. Fuer Notizen aus Nextcloud
+      # ist QOwnNotes zustaendig, siehe Flatpak-Liste weiter unten.
 
       # Kdenlive nativ. Videoschnitt lebt von Codecs und
       # Hardware-Dekodierung über VAAPI — dasselbe Argument wie bei VLC.
@@ -216,6 +227,19 @@
     packages = [
       "org.gimp.GIMP"
       "org.inkscape.Inkscape"
+
+      # QOwnNotes: Notizen aus Nextcloud. Nextcloud Notes legt seine Notizen
+      # als gewoehnliche .md-Dateien in einem Ordner ab, den der
+      # Nextcloud-Client ohnehin synchronisiert — QOwnNotes arbeitet direkt
+      # darauf und kennt zusaetzlich die Nextcloud-API fuer Versionen und
+      # Papierkorb.
+      #
+      # Drei Dinge geprueft, bevor es hier steht:
+      #   * finish-args enthaelt --filesystem=home, es kommt also ohne
+      #     zusaetzliche Sandbox-Ausnahme an ~/Nextcloud
+      #   * kein extra-data im Manifest, also nicht das Spotify/Slack-Problem
+      #   * Runtime ist org.kde.Platform, es sieht unter Plasma nativ aus
+      "org.qownnotes.QOwnNotes"
       # Auf Ubuntu-Basis der bessere Weg als apt: keine
       # 32-Bit-Multiarch-Kaskade.
       "com.valvesoftware.Steam"
