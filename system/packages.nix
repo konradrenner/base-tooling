@@ -65,6 +65,24 @@
       # Kasts: Kirigami-Podcastplayer, gehört ebenfalls in den KDE-Stack.
       "kasts"
 
+      # Marknote: Kirigami-Notizanwendung aus KDE Gear.
+      "marknote"
+
+      # Kdenlive nativ. Videoschnitt lebt von Codecs und
+      # Hardware-Dekodierung über VAAPI — dasselbe Argument wie bei VLC.
+      "kdenlive"
+
+      # Skanlite: SANE-Frontend. Braucht Zugriff auf das Scanner-Gerät,
+      # was in einer Sandbox notorisch schmerzhaft ist. Falls TuxedoOS es
+      # ohnehin mitbringt, ist die Zeile schlicht ein No-op — apt meldet
+      # dann "ist schon die neueste Version".
+      "skanlite"
+
+      # Alle drei liegen auch in nixpkgs (kdePackages.marknote 1.4.1,
+      # .kdenlive 26.04.3, .skanlite 26.04.3). Bewusst trotzdem aus apt:
+      # KDE-Anwendungen gehören auf einer KDE-Distribution in den nativen
+      # Stack, und TUXEDO liefert über die eigenen Repos aktuelles KDE Gear.
+
       # LibreOffice mit KDE-Frontend: native Dateidialoge und
       # Plasma-Theming. Als Flatpak wirkt es fremd.
       "libreoffice"
@@ -100,6 +118,13 @@
       # Mediaplayer ist nativ ohnehin die bessere Wahl — Hardware-Videodecoding
       # ueber VAAPI funktioniert ausserhalb der Sandbox verlaesslicher.
       "vlc"
+
+      # ── Kommunikation ─────────────────────────────────────────────
+      # Slack aus dem offiziellen Packagecloud-Repo, NICHT von Flathub:
+      # com.slack.Slack ist ein extra-data-Paket und scheitert an derselben
+      # User-Namespace-Einschraenkung wie Spotify. Begruendung in
+      # system/repos.nix.
+      "slack-desktop"
 
       # ── Browser ───────────────────────────────────────────────────
       # Firefox liefert TuxedoOS bereits als .deb mit (kein Snap) —

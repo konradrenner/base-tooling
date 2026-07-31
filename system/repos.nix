@@ -74,6 +74,37 @@
   }
 
   {
+    name = "slack";
+    setup = ''
+      # Slack aus dem offiziellen Packagecloud-Repo.
+      #
+      # NICHT ueber Flathub: com.slack.Slack ist ein extra-data-Paket. Es laedt
+      # bei der Installation ein Snap und entpackt es per apply_extra in bwrap
+      # — exakt Spotifys Fehlermodus, der an Ubuntus
+      # kernel.apparmor_restrict_unprivileged_userns=1 scheitert:
+      #   bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted
+      # Im Flathub-Manifest steht dazu "type: extra-data" mit einer
+      # snapcraft-URL. Verifiziert, nicht vermutet.
+      #
+      # Das Repo nennt als Distribution "jessie" — das ist bei
+      # Packagecloud-Repos ein einzelner Sammel-Bucket und kein Tippfehler.
+      #
+      # Sollte sich das Repo als veraltet erweisen, meldet apt_install
+      # 'slack-desktop' als nicht installierbar und der Lauf geht weiter;
+      # dann waere ein gepinntes .deb ueber die debs-Liste der naechste Schritt.
+      if [ ! -f /etc/apt/keyrings/slack.gpg ]; then
+        sudo install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://packagecloud.io/slacktechnologies/slack/gpgkey \
+          | gpg --dearmor \
+          | sudo tee /etc/apt/keyrings/slack.gpg > /dev/null
+        sudo chmod a+r /etc/apt/keyrings/slack.gpg
+      fi
+      echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/slack.gpg] https://packagecloud.io/slacktechnologies/slack/debian/ jessie main" \
+        | sudo tee /etc/apt/sources.list.d/slack.list > /dev/null
+    '';
+  }
+
+  {
     name = "google-chrome";
     setup = ''
       # Google Chrome
