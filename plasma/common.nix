@@ -51,6 +51,27 @@
       name = "base-tooling";
       colorScheme = "Dracula";
 
+      # Terminal-Shell ausdrücklich deklariert statt geerbt.
+      #
+      # Ohne diese Zeile startet Konsole, was in $SHELL steht. Diese Variable
+      # wird beim Anmelden aus /etc/passwd gesetzt — in der Praxis kam sie hier
+      # aber nicht an: passwd stand nachweislich auf /bin/zsh, nach dem
+      # Neuanmelden lief in Konsole trotzdem bash. Damit ist die Shell des
+      # Terminals von einer Env-Variablen abhängig, die durch die halbe
+      # Session-Kette wandert (SDDM, PAM, systemd) und dabei verlorengehen kann.
+      #
+      # Genau solche impliziten Abhängigkeiten soll dieses Repo loswerden:
+      # deklariert statt geerbt.
+      #
+      # Bewusst ohne -l: als Nicht-Login-Shell liest zsh .zshenv und .zshrc.
+      # Beide von Home Manager erzeugten Login-Dateien (.zprofile, .zshenv)
+      # sind leer, es geht also nichts verloren — und die Session-Variablen
+      # kommen aus plasma-workspace/env/nix.sh, nicht aus .zprofile.
+      #
+      # /bin/zsh und /usr/bin/zsh sind auf Ubuntu dasselbe (usrmerge); /bin/zsh
+      # ist der Pfad, auf den auch chsh gesetzt wurde.
+      command = "/bin/zsh";
+
       # font-family / font-size
       #
       # Ghostty stand auf 14, hier ist es aber 11 — und das ist kein Fehler:
