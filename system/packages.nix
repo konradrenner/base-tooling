@@ -240,6 +240,18 @@
       #   * kein extra-data im Manifest, also nicht das Spotify/Slack-Problem
       #   * Runtime ist org.kde.Platform, es sieht unter Plasma nativ aus
       "org.qownnotes.QOwnNotes"
+
+      # Jan: lokale KI-Chat-App. Upstream empfiehlt auf Linux inzwischen
+      # Flatpak; Updates kommen damit wie bei den anderen GUI-Apps über
+      # Flathub. Das Flathub-Manifest gibt der App mit --device=dri Zugriff
+      # auf die GPU-Rendergeräte und bringt die Vulkan-Werkzeuge mit.
+      #
+      # Kein CUDA-/ROCm-Paket hier: Grafiktreiber sind auf TUXEDO OS Teil des
+      # systemnahen apt-Layers und hängen von der tatsächlich verbauten GPU
+      # ab. Jan erkennt die Hardware selbst; der passende llama.cpp-Backend
+      # wird nach dem ersten Start in Jan gewählt (siehe README).
+      "ai.jan.Jan"
+
       # Auf Ubuntu-Basis der bessere Weg als apt: keine
       # 32-Bit-Multiarch-Kaskade.
       "com.valvesoftware.Steam"

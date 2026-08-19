@@ -251,6 +251,27 @@ Voraussetzungen kommen aus apt: `docker-ce`, `freerdp3-x11`, `usbutils`, dazu di
 
 Beim ersten Start lädt Winboat das Windows-Image herunter. Das dauert und braucht Platz.
 
+=== Jan: lokaler KI-Chat mit GPU-Zugriff
+
+Jan wird deklarativ als `ai.jan.Jan` aus Flathub installiert. Das ist der von
+Jan für Linux empfohlene Installationsweg. Das Flathub-Manifest erlaubt mit
+`--device=dri` den Zugriff auf die GPU-Rendergeräte und baut Vulkan-Werkzeuge
+ein; eine zusätzliche Flatpak-Ausnahme ist deshalb nicht nötig.
+
+Welches Rechen-Backend korrekt ist, hängt von der tatsächlich verbauten GPU ab
+und wird daher nicht im Repo geraten. Nach dem ersten Start unter
+`Einstellungen -> Model Providers -> Llama.cpp -> Backend` den von Jan erkannten
+Backend prüfen bzw. auswählen:
+
+* NVIDIA: CUDA, sofern der TUXEDO-/NVIDIA-Treiber und CUDA vorhanden sind
+* AMD oder Intel Arc: Vulkan
+
+Jan verwendet laut eigener Dokumentation ein GPU-Backend nur bevorzugt, wenn
+die GPU mindestens 6 GB VRAM meldet; darunter fällt Jan auf die CPU zurück. Die
+aktive GPU lässt sich in Jans System Monitor kontrollieren. Die Grafiktreiber
+bleiben bewusst bei TUXEDO OS und werden nicht durch dieses hardwareunabhängige
+Repo ersetzt.
+
 [[day2]]
 == Day 2: Änderungen anwenden
 
