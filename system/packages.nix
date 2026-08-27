@@ -255,6 +255,9 @@
       # Auf Ubuntu-Basis der bessere Weg als apt: keine
       # 32-Bit-Multiarch-Kaskade.
       "com.valvesoftware.Steam"
+
+      # unciv Strategiespiel
+      "io.github.yairm210.unciv"
     ];
   };
 }
