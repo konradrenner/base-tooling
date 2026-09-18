@@ -53,6 +53,7 @@
       "kmail"
       "korganizer"
       "kaddressbook"
+      "akonadi-import-wizard"
       # SQLite statt MySQL, damit kein Datenbankdienst im Hintergrund laeuft.
       #
       # Das Paket allein genuegt NICHT: Akonadi benutzt weiterhin den
