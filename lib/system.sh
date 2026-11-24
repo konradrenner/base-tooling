@@ -284,6 +284,85 @@ Entweder wurde das Release ersetzt, oder der Download ist beschädigt."
   done <<< "$list"
 }
 
+# Plasmoids (KDE-Widgets) gepinnt installieren — siehe plasmoids in
+# system/packages.nix. Idempotent: existiert
+# ~/.local/share/plasma/plasmoids/<name> schon, wird nichts getan.
+#
+# URL-Schema: https://… = direktes Archiv; ocs://<id> = KDE-Store-Produkt,
+# dessen signierte Download-Links ablaufen — der Link wird zur Laufzeit ueber
+# die OCS-API aufgeloest, der gepinnte sha256 prueft den Inhalt.
+#
+# Installiert wird pro User mit kpackagetool6 -i (Fallback: Archiv direkt
+# entpacken). Fehler brechen den Lauf nicht ab — ein fehlendes Widget ist
+# aergerlich, aber kein Grund, apt oder den Nix-Layer auszulassen.
+install_plasmoids() {
+  local repo="$1"
+  local list name version sha url tmp file plasmoid_dir target dl
+
+  list="$(nix eval --raw "${repo}#plasmoidList")"
+  [ -n "${list//[[:space:]]/}" ] || return 0
+
+  plasmoid_dir="${XDG_DATA_HOME:-$HOME/.local/share}/plasma/plasmoids"
+
+  while read -r name version sha url; do
+    [ -n "$name" ] || continue
+
+    target="$plasmoid_dir/$name"
+    if [ -d "$target" ]; then
+      msg "Plasmoid $name ist schon installiert — übersprungen."
+      continue
+    fi
+
+    case "$url" in
+      ocs://*)
+        dl="$(curl -fsSL --max-time 30 \
+                "https://api.kde-look.org/ocs/v1/content/data/${url#ocs://}" \
+              | grep -oE '<downloadlink[0-9]+>[^<]+</downloadlink[0-9]+>' \
+              | sed -E 's/<[^>]+>//g' | tail -1 || true)"
+        if [ -z "$dl" ]; then
+          warn "Downloadlink fuer $name (${url}) liess sich nicht aufloesen — übersprungen."
+          continue
+        fi
+        url="$dl"
+        ;;
+    esac
+
+    msg "Plasmoid $name $version installieren (war nicht vorhanden)"
+    tmp="$(mktemp -d)"
+    file="$tmp/package"
+
+    if ! curl -fL --progress-bar --max-time 120 -o "$file" "$url"; then
+      warn "Download von $name fehlgeschlagen — übersprungen."
+      rm -rf "$tmp"
+      continue
+    fi
+
+    if ! printf '%s  %s\n' "$sha" "$file" | sha256sum -c --quiet -; then
+      warn "sha256 von $name weicht ab (erwartet: $sha) — nichts installiert."
+      rm -rf "$tmp"
+      continue
+    fi
+
+    if require_cmd kpackagetool6 \
+       && kpackagetool6 -t Plasma/Applet -i "$file" >/dev/null 2>&1; then
+      msg "$name installiert nach $target."
+    else
+      # Fallback ohne kpackagetool6: Archiv direkt entpacken.
+      mkdir -p "$plasmoid_dir"
+      case "$file" in
+        *.zip|*.plasmoid) unzip -q -o "$file" -d "$plasmoid_dir" ;;
+        *) tar -xf "$file" -C "$plasmoid_dir" ;;
+      esac
+      if [ -d "$target" ]; then
+        msg "$name nach $target entpackt (Fallback ohne kpackagetool6)."
+      else
+        warn "$name: Archiv enthaelt kein Verzeichnis $name — bitte manuell prüfen."
+      fi
+    fi
+    rm -rf "$tmp"
+  done <<< "$list"
+}
+
 # Purge mit Sicherheitsnetz: erst simulieren, und abbrechen falls apt mehr
 # entfernen würde als deklariert. Kein `-y` ins Blaue.
 apt_purge_checked() {

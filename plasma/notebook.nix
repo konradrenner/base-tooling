@@ -27,10 +27,5 @@
     # Gerät. Am Standpc existiert er nicht.
     kcminputrc."Libinput/2362/597/UNIW0001:00 093A:0255 Touchpad".NaturalScroll = true;
     kcminputrc."Libinput/2362/597/UNIW0001:00 093A:0255 Touchpad".TapToClick = true;
-
-    # ── Zusatztasten der Maus ─────────────────────────────────────────
-    # Gilt nur, solange dieselbe Maus angeschlossen ist.
-    kcminputrc."ButtonRebinds/Mouse".ExtraButton3 = "Key,Meta+G";
-    kcminputrc."ButtonRebinds/Mouse".ExtraButton4 = "Key,Alt+F1";
   };
 }

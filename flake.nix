@@ -82,6 +82,9 @@
       # Eine Zeile je .deb: name version sha256 url
       debList = lines (map (d: "${d.name} ${d.version} ${d.sha256} ${d.url}") sys.debs);
 
+      # Eine Zeile je Plasmoid: name version sha256 url
+      plasmoidList = lines (map (p: "${p.name} ${p.version} ${p.sha256} ${p.url}") sys.plasmoids);
+
       profileList = space profiles;
 
       # Fremd-Repos als shell-auswertbare Blöcke (siehe system/repos.nix).

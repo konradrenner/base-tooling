@@ -213,6 +213,40 @@
     }
   ];
 
+  # ── Plasmoids (KDE-Widgets) ────────────────────────────────────────
+  # Gepinnte Pakete fuer Widgets, die in plasma/common.nix deklariert sind
+  # (Panel- bzw. Desktop-Widgets). Installiert werden sie pro User nach
+  # ~/.local/share/plasma/plasmoids/ — siehe install_plasmoids in
+  # lib/system.sh, aufgerufen von bootstrap.sh und sync.sh.
+  #
+  # Idempotent: existiert das Plasmoid schon, passiert nichts (auch nicht
+  # bei Versionsunterschieden — Upgrades bleiben bewusst manuell).
+  #
+  # URL-Schema:
+  #   https://…   direktes Archiv (.plasmoid/.zip/.tar.*), z.B. GitHub-Release
+  #   ocs://<id>  KDE-Store-Produkt. store.kde.org stellt nur signierte,
+  #               ABLAUFENDE Download-Links aus — deshalb die stabile
+  #               OCS-Produkt-ID. install_plasmoids loest den Downloadlink
+  #               zur Laufzeit auf; der gepinnte sha256 prueft den Inhalt.
+  #
+  # Beim Aktualisieren: neue Version/URL eintragen, Hash neu bestimmen:
+  #   curl -sL <url> -o /tmp/pkg && sha256sum /tmp/pkg
+  # bzw. bei ocs:// zuerst den downloadlink aus der OCS-Antwort loesen.
+  plasmoids = [
+    {
+      name = "com.joshuaroman.plasmallm";
+      version = "3.3.0";
+      url = "https://github.com/joshuaeroman/plasmallm/releases/download/3.3.0/PlasmaLLM-3.3.0.plasmoid";
+      sha256 = "7c94ff981abb278279a1470edd7b9fb18c7fc5b20bdb5b548747935e9a1886e1";
+    }
+    {
+      name = "Clock.Asitoki.Color";
+      version = "1.3.1";
+      url = "ocs://2136295";
+      sha256 = "48696528fdd107539c276a4a9388d763be30c2ee5333d56f864aa574d355486f";
+    }
+  ];
+
   flatpak = {
     # Reihenfolge ist relevant: nix-flatpak installiert der Liste nach und
     # bricht beim ersten Fehler ab. Ein problematisches Paket vorne verhindert

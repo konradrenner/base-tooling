@@ -258,6 +258,13 @@
           "org.kde.plasma.pager"
           "org.kde.plasma.notes"
 
+          # PlasmaLLM (com.joshuaroman.plasmallm), sitzt im Panel zwischen
+          # Notizen und Icon-Taskmanager (AppletOrder 28;29;30;56;31;...).
+          # Bewusst OHNE config: die Widget-Konfiguration enthaelt Secrets
+          # (API-Endpoint, desktopAutomationToken) und absolute Home-Pfade —
+          # Profil und API-Key liegen pro Maschine im KWallet, nicht im Repo.
+          "com.joshuaroman.plasmallm"
+
           {
             iconTasks = {
               # Angepinnte Anwendungen, Reihenfolge wie gehabt.
@@ -288,8 +295,51 @@
 
           "org.kde.plasma.marginsseparator"
           "org.kde.plasma.systemtray"
-          "org.kde.plasma.digitalclock"
+
+          {
+            digitalClock = {
+              calendar = {
+                # Widget-seitige Kalender-Plugins des Uhr-Popups
+                # (enabledCalendarPlugins in der appletsrc). Wert aus der
+                # Live-Config uebernommen. Ohne diese Deklaration wuerde das
+                # Panel-Skript das Applet mit Default-Konfig neu aufbauen.
+                #
+                # Davon NICHT betroffen: die Akonadi-Kalender selbst (Termine,
+                # Ressourcen) liegen in ~/.local/share/akonadi und
+                # ~/.config/akonadi* — die fasst dieses Repo nicht an
+                # (overrideConfig = false, kein resetFiles darauf).
+                plugins = [ "pimevents" "holidaysevents" ];
+              };
+            };
+          }
         ];
+      }
+    ];
+
+    # ── Desktop-Widgets ───────────────────────────────────────────────
+    # ACHTUNG: sobald diese Liste gesetzt ist, entfernt plasma-manager beim
+    # Anwenden ALLE Desktop-Widgets und baut sie nur aus dieser Liste neu auf
+    # (siehe README "Zurücksynchronisieren"). Was hier nicht steht, ist nach
+    # dem nächsten Login weg.
+    #
+    # Uhr "Clock.Asitoki.Color" (Store-Plasmoid, liegt unter
+    # ~/.local/share/plasma/plasmoids/). Position/Größe stammen vom
+    # 1800x1125-Desktop (ItemGeometries Applet-53:1312,720,384,368) — Plasma
+    # klemmt das Widget auf anderen Auflösungen zurecht. DialogHeight/Width
+    # sind Laufzeitzustand und bleiben draußen.
+    desktop.widgets = [
+      {
+        name = "Clock.Asitoki.Color";
+        position = {
+          horizontal = 1312;
+          vertical = 720;
+        };
+        size = {
+          width = 384;
+          height = 368;
+        };
+        screen = 0;
+        config.General.colorGeneral = "#ffffff";
       }
     ];
 
@@ -440,6 +490,10 @@
 
       # Maus (geräteunabhängig; das Touchpad steht im Host-Modul)
       kcminputrc.Mouse.X11LibInputXAccelProfileFlat = false;
+      # ── Zusatztasten der Maus ─────────────────────────────────────────
+      # Gilt nur, solange dieselbe Maus angeschlossen ist.
+      kcminputrc."ButtonRebinds/Mouse".ExtraButton3 = "Key,Alt+Space";
+      kcminputrc."ButtonRebinds/Mouse".ExtraButton4 = "Key,Meta+W";
 
       # Sprache und Formate
       plasma-localerc.Formats.LANG = "de_AT.UTF-8";
@@ -449,4 +503,48 @@
       spectaclerc.GuiConfig.captureMode = 0;
     };
   };
+
+  # ── Kate: Eclipse-Tastenkürzel direkt in der User-ui.rc ────────────
+  # KXMLGUI merged die User-Datei ~/.local/share/kxmlgui5/<client>/
+  # <client>ui.rc über die System-Datei: KXmlGuiVersionHandler nimmt
+  # die Datei mit der höchsten Version als Basis und kopiert die
+  # <ActionProperties> der lokalen Datei hinein; refreshActionProperties
+  # wendet sie anhand des Action-Namens an. Damit sind die Kürzel ohne
+  # einmaligen Klick in Kate aktiv.
+  #
+  # WICHTIG: version="1" stehen lassen. Die System-ui.rc hat eine
+  # höhere Version; nur dann bleibt sie die Basis (Menüs) und die
+  # lokalen ActionProperties werden nur aufgesetzt.
+  #
+  # Action-Namen gegen die KDE-Quellen geprüft. Eclipse-Bindings ohne
+  # Kate-Gegenstück (Ctrl+Shift+O, Ctrl+Shift+T, Ctrl+1) fehlen bewusst.
+  # Alle Action-Namen stehen auf dem Gerät in
+  # /usr/share/kxmlgui5/katepart/katepart5ui.rc und
+  # /usr/share/kxmlgui5/kate/kateui.rc.
+  #
+  # katepart = Editor-Komponente, gilt für Kate UND KWrite:
+  xdg.dataFile."kxmlgui5/katepart/katepart5ui.rc".text = ''
+    <?xml version="1.0" encoding="utf-8"?>
+    <gui name="katepart" version="1">
+      <ActionProperties>
+        <!-- Eclipse: Go to Line -->
+        <Action name="go_goto_line" shortcut="Ctrl+L"/>
+        <!-- Eclipse: Content Assist -->
+        <Action name="tools_invoke_code_completion" shortcut="Ctrl+Space"/>
+        <!-- Eclipse: Toggle Comment -->
+        <Action name="tools_toggle_comment" shortcut="Ctrl+/"/>
+      </ActionProperties>
+    </gui>
+  '';
+  # kate = Anwendungs-Actions (Fenster/Tabs/Navigation):
+  xdg.dataFile."kxmlgui5/kate/kateui.rc".text = ''
+    <?xml version="1.0" encoding="utf-8"?>
+    <gui name="kate" version="1">
+      <ActionProperties>
+        <!-- Eclipse: Navigate Back / Forward -->
+        <Action name="go_back" shortcut="Alt+Left"/>
+        <Action name="go_forward" shortcut="Alt+Right"/>
+      </ActionProperties>
+    </gui>
+  '';
 }

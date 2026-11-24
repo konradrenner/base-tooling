@@ -78,6 +78,10 @@ fi
 hm_switch "$INSTALL_DIR" "$PROFILE"
 flatpak_kick
 
+# Plasmoids installieren, falls noch nicht vorhanden — die Widget-Deklaration
+# in plasma/common.nix setzt sie voraus. Kein sudo nötig (pro User).
+install_plasmoids "$INSTALL_DIR"
+
 # Bewusst NACH hm_switch, siehe Kommentar in lib/system.sh.
 if [[ "$SKIP_APT" == false ]]; then
   ensure_groups "$USER"
