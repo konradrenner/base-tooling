@@ -323,16 +323,17 @@
     # dem nächsten Login weg.
     #
     # Uhr "Clock.Asitoki.Color" (Store-Plasmoid, liegt unter
-    # ~/.local/share/plasma/plasmoids/). Position/Größe stammen vom
-    # 1800x1125-Desktop (ItemGeometries Applet-53:1312,720,384,368) — Plasma
-    # klemmt das Widget auf anderen Auflösungen zurecht. DialogHeight/Width
-    # sind Laufzeitzustand und bleiben draußen.
+    # ~/.local/share/plasma/plasmoids/). Position/Größe aus der Live-appletsrc
+    # (ItemGeometries-1800x1125=Applet-83:1312,736,384,368 — rechts unten auf
+    # dem 1800x1125-Desktop; rc2nix exportiert ItemGeometries nicht, deshalb
+    # von Hand übernommen). Plasma klemmt das Widget auf anderen Auflösungen
+    # zurecht. DialogHeight/Width sind Laufzeitzustand und bleiben draußen.
     desktop.widgets = [
       {
         name = "Clock.Asitoki.Color";
         position = {
           horizontal = 1312;
-          vertical = 720;
+          vertical = 736;
         };
         size = {
           width = 384;
